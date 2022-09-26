@@ -1,0 +1,12 @@
+[package]
+name = "asteroids-bevy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy = "0.8.1"
+bevy_prototype_lyon = "0.6.0"
+getrandom = { version = "0.2.7", features = ["js"] }
+rand = "0.8.5"
