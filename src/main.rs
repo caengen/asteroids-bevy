@@ -22,7 +22,8 @@ pub const GAME_WIDTH: f32 = 240.0;
 pub const SCALE: f32 = SCREEN_WIDTH / GAME_WIDTH;
 // pub const PIXELS_PER_METER: f32 = 30.0 / SCALE;
 
-pub const PLAYER_DAMPING: f32 = 0.75;
+pub const PLAYER_DAMPING: f32 = 0.998;
+pub const POLY_LINE_WIDTH: f32 = 0.075;
 
 fn main() {
     App::new()
@@ -40,6 +41,9 @@ fn main() {
         .add_startup_system(setup_system)
         .add_system(steering_control_system)
         .add_system(movement_system)
+        .add_system(drive_control_system)
+        .add_system(drive_system)
+        .add_system(damping_system)
         .run();
 }
 
@@ -58,7 +62,7 @@ fn setup_system(mut commands: Commands) {
             (GeometryBuilder::build_as(
                 &shape,
                 DrawMode::Outlined {
-                    outline_mode: StrokeMode::new(Color::WHITE, 0.075 * SCALE),
+                    outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * SCALE),
                     fill_mode: FillMode::color(Color::BLACK),
                 },
                 Transform {
@@ -70,7 +74,34 @@ fn setup_system(mut commands: Commands) {
         .insert(Velocity::default())
         .insert(AngularVelocity::default())
         .insert(Damping::from(PLAYER_DAMPING))
-        .insert(SteeringControl::from(Angle::degrees(180.0)));
+        .insert(SteeringControl::from(Angle::degrees(180.0)))
+        .insert(Drive::new(1.5));
+}
+
+fn drive_control_system(mut query: Query<(&mut Drive)>, keyboard: Res<Input<KeyCode>>) {
+    for mut drive in query.iter_mut() {
+        drive.on = keyboard.pressed(KeyCode::Up);
+    }
+}
+
+fn drive_system(mut query: Query<(&mut Velocity, &Transform, &Drive)>) {
+    for (mut velocity, transform, drive) in query.iter_mut() {
+        if !drive.on {
+            return;
+        }
+
+        //what the fuck is this quat shit
+        // changed from Vec3::X to -Vec::Y and now this shit works wtf
+        let direction = transform.rotation * -Vec3::Y;
+        velocity.x += direction.x * drive.force;
+        velocity.y += direction.y * drive.force;
+    }
+}
+
+fn damping_system(mut query: Query<(&mut Velocity, &Damping)>) {
+    for (mut velocity, damping) in query.iter_mut() {
+        velocity.0 *= damping.0;
+    }
 }
 
 fn steering_control_system(
@@ -92,9 +123,13 @@ fn movement_system(
     time: Res<Time>,
     mut query: Query<(&mut Transform, Option<&AngularVelocity>, Option<&Velocity>)>,
 ) {
-    for (mut transform, angular_velocity, _velocity) in query.iter_mut() {
+    for (mut transform, angular_velocity, velocity) in query.iter_mut() {
         if let Some(AngularVelocity(vel)) = angular_velocity {
             transform.rotate(Quat::from_rotation_z(vel * time.delta_seconds()))
+        }
+        if let Some(Velocity(vel)) = velocity {
+            transform.translation.x += vel.x * time.delta_seconds();
+            transform.translation.y += vel.y * time.delta_seconds();
         }
     }
 }
@@ -131,9 +166,20 @@ struct Ship {
 }
 
 #[derive(Debug, Component)]
-struct SideThrusters {}
+struct Drive {
+    pub on: bool,
+    pub force: f32,
+}
+impl Drive {
+    pub fn new(force: f32) -> Self {
+        Drive {
+            on: false,
+            force: force,
+        }
+    }
+}
 
-#[derive(Debug, Component, Default)]
+#[derive(Debug, Component, Default, Deref, DerefMut, From)]
 struct Velocity(Vec2);
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
