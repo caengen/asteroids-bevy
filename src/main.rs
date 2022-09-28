@@ -51,6 +51,13 @@ fn main() {
         .run();
 }
 
+// fn asteroid_setup_system(mut commands: Commands) {
+//     let amount = 10;
+//     let angle_increment = 360.0 / amount as f32;
+
+//     for i in 0..amount {}
+// }
+
 fn setup_system(mut commands: Commands) {
     let shape = shapes::Polygon {
         points: scaled_ship_points(),
@@ -76,7 +83,7 @@ fn setup_system(mut commands: Commands) {
                 },
             )),
         )
-        .insert(Bounds::from(vec2(1.0, 1.0)))
+        .insert(Bounding::from(0.5))
         .insert(Velocity::default())
         .insert(AngularVelocity::default())
         .insert(Damping::from(PLAYER_DAMPING))
@@ -84,18 +91,21 @@ fn setup_system(mut commands: Commands) {
         .insert(Drive::new(1.5));
 }
 
-fn boundary_wrapping_system(mut query: Query<(&mut Transform, &Bounds)>) {
-    for (mut transform, bounds) in query.iter_mut() {
-        if (transform.translation.x + bounds.x / 2.0) > (SCREEN_WIDTH / 2.0) {
-            transform.translation.x = -SCREEN_WIDTH / 2.0 - bounds.x / 2.0;
-        } else if (transform.translation.x - bounds.x / 2.0) < (-SCREEN_WIDTH / 2.0) {
-            transform.translation.x = SCREEN_WIDTH / 2.0 + bounds.x / 2.0;
+fn boundary_wrapping_system(
+    window: Res<WindowDescriptor>,
+    mut query: Query<(&mut Transform, &Bounding, With<BoundaryWrap>)>,
+) {
+    for (mut transform, bound, _) in query.iter_mut() {
+        if (transform.translation.x + bound.0) > (window.width / 2.0) {
+            transform.translation.x = -window.width / 2.0 - bound.0;
+        } else if (transform.translation.x - bound.0) < (-window.width / 2.0) {
+            transform.translation.x = window.width / 2.0 + bound.0;
         }
 
-        if (transform.translation.y + bounds.y / 2.0) > (SCREEN_HEIGHT / 2.0) {
-            transform.translation.y = -SCREEN_HEIGHT / 2.0 - bounds.y / 2.0;
-        } else if (transform.translation.y - bounds.y) < (-SCREEN_HEIGHT / 2.0) {
-            transform.translation.y = SCREEN_HEIGHT / 2.0 + bounds.y / 2.0;
+        if (transform.translation.y + bound.0) > (window.height / 2.0) {
+            transform.translation.y = -window.height / 2.0 - bound.0;
+        } else if (transform.translation.y - bound.0) < (-window.height / 2.0) {
+            transform.translation.y = window.height / 2.0 + bound.0;
         }
     }
 }
@@ -202,7 +212,9 @@ impl Drive {
 }
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
-struct Bounds(Vec2);
+struct Bounding(f32);
+#[derive(Debug, Component)]
+struct BoundaryWrap;
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 struct Velocity(Vec2);
