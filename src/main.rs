@@ -47,6 +47,7 @@ fn main() {
         .add_system(drive_control_system)
         .add_system(drive_system)
         .add_system(damping_system)
+        .add_system(boundary_wrapping_system)
         .run();
 }
 
@@ -70,10 +71,12 @@ fn setup_system(mut commands: Commands) {
                 },
                 Transform {
                     scale: Vec3::splat(SCALE),
+                    rotation: Quat::from_rotation_z(180.0_f32.to_radians()),
                     ..Default::default()
                 },
             )),
         )
+        .insert(Bounds::from(vec2(1.0, 1.0)))
         .insert(Velocity::default())
         .insert(AngularVelocity::default())
         .insert(Damping::from(PLAYER_DAMPING))
@@ -81,9 +84,21 @@ fn setup_system(mut commands: Commands) {
         .insert(Drive::new(1.5));
 }
 
-// fn boundary_system(mut query) {
+fn boundary_wrapping_system(mut query: Query<(&mut Transform, &Bounds)>) {
+    for (mut transform, bounds) in query.iter_mut() {
+        if (transform.translation.x + bounds.x / 2.0) > (SCREEN_WIDTH / 2.0) {
+            transform.translation.x = -SCREEN_WIDTH / 2.0 - bounds.x / 2.0;
+        } else if (transform.translation.x - bounds.x / 2.0) < (-SCREEN_WIDTH / 2.0) {
+            transform.translation.x = SCREEN_WIDTH / 2.0 + bounds.x / 2.0;
+        }
 
-// }
+        if (transform.translation.y + bounds.y / 2.0) > (SCREEN_HEIGHT / 2.0) {
+            transform.translation.y = -SCREEN_HEIGHT / 2.0 - bounds.y / 2.0;
+        } else if (transform.translation.y - bounds.y) < (-SCREEN_HEIGHT / 2.0) {
+            transform.translation.y = SCREEN_HEIGHT / 2.0 + bounds.y / 2.0;
+        }
+    }
+}
 
 fn drive_control_system(mut query: Query<(&mut Drive)>, keyboard: Res<Input<KeyCode>>) {
     for mut drive in query.iter_mut() {
@@ -185,6 +200,9 @@ impl Drive {
         }
     }
 }
+
+#[derive(Debug, Component, Default, Deref, DerefMut, From)]
+struct Bounds(Vec2);
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 struct Velocity(Vec2);
