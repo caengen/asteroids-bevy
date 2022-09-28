@@ -25,6 +25,9 @@ pub const SCALE: f32 = SCREEN_WIDTH / GAME_WIDTH;
 pub const PLAYER_DAMPING: f32 = 0.998;
 pub const POLY_LINE_WIDTH: f32 = 0.075;
 
+pub const DARK: (f32, f32, f32) = (49.0, 47.0, 40.0);
+pub const LIGHT: (f32, f32, f32) = (218.0, 216.0, 209.0);
+
 fn main() {
     App::new()
         .insert_resource(WindowDescriptor {
@@ -63,7 +66,7 @@ fn setup_system(mut commands: Commands) {
                 &shape,
                 DrawMode::Outlined {
                     outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * SCALE),
-                    fill_mode: FillMode::color(Color::BLACK),
+                    fill_mode: FillMode::color(Color::WHITE),
                 },
                 Transform {
                     scale: Vec3::splat(SCALE),
@@ -78,6 +81,10 @@ fn setup_system(mut commands: Commands) {
         .insert(Drive::new(1.5));
 }
 
+// fn boundary_system(mut query) {
+
+// }
+
 fn drive_control_system(mut query: Query<(&mut Drive)>, keyboard: Res<Input<KeyCode>>) {
     for mut drive in query.iter_mut() {
         drive.on = keyboard.pressed(KeyCode::Up);
@@ -91,7 +98,7 @@ fn drive_system(mut query: Query<(&mut Velocity, &Transform, &Drive)>) {
         }
 
         //what the fuck is this quat shit
-        // changed from Vec3::X to -Vec::Y and now this shit works wtf
+        // changed from Vec3::X to -Vec::Y and now this shit works wtf?
         let direction = transform.rotation * -Vec3::Y;
         velocity.x += direction.x * drive.force;
         velocity.y += direction.y * drive.force;
