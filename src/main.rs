@@ -1,6 +1,7 @@
 use bevy::{
     math::{const_vec2, vec2, vec3},
     prelude::*,
+    time::FixedTimestep,
     window::PresentMode,
 };
 use bevy_prototype_lyon::{
@@ -12,7 +13,11 @@ use bevy_prototype_lyon::{
     shapes::Polygon,
 };
 use derive_more::From;
+use rand::Rng;
+use random::{Random, RandomPlugin};
 use std::{default::Default, f32::consts::PI, ops::Range, time::Duration};
+
+mod random;
 
 const SCREEN_HEIGHT: f32 = 640.0;
 const SCREEN_WIDTH: f32 = 960.0;
@@ -39,8 +44,15 @@ fn main() {
         })
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(Msaa { samples: 4 })
+        .insert_resource(AsteroidSizes {
+            big: 20.0..25.0,
+            medium: 10.0..15.0,
+            small: 5.0..7.5,
+        })
+        .add_event::<AsteroidSpawnEvent>()
         .add_plugins(DefaultPlugins)
         .add_plugin(ShapePlugin)
+        .add_plugin(RandomPlugin)
         .add_startup_system(setup_system)
         .add_system(steering_control_system)
         .add_system(movement_system)
@@ -48,6 +60,8 @@ fn main() {
         .add_system(drive_system)
         .add_system(damping_system)
         .add_system(boundary_wrapping_system)
+        .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(1.0)))
+        .add_system(asteroid_generation_system)
         .run();
 }
 
@@ -84,12 +98,139 @@ fn setup_system(mut commands: Commands) {
             )),
         )
         .insert(Bounding::from(0.5))
+        .insert(BoundaryWrap)
         .insert(Velocity::default())
         .insert(AngularVelocity::default())
         .insert(Damping::from(PLAYER_DAMPING))
         .insert(SteeringControl::from(Angle::degrees(180.0)))
         .insert(Drive::new(1.5));
 }
+
+pub struct AsteroidSpawnEvent {
+    pub pos: Vec2,
+    pub radius: f32,
+    pub amount: i32,
+}
+
+fn asteroid_spawn_system(
+    window: Res<WindowDescriptor>,
+    asteroid_sizes: Res<AsteroidSizes>,
+    mut rng: Local<Random>,
+    mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
+) {
+    if !rng.gen_bool(1.0 / 3.0) {
+        return;
+    }
+
+    let h = window.height / 2.0;
+    let w = window.width / 2.0;
+
+    let x = rng.gen_range(-w..w);
+    let y = rng.gen_range(-h..h);
+
+    let size = rng.gen_range(0..=10);
+    let radius = match size {
+        0..=4 => rng.gen_range(asteroid_sizes.big.clone()),
+        5..=8 => rng.gen_range(asteroid_sizes.medium.clone()),
+        9..=10 => rng.gen_range(asteroid_sizes.small.clone()),
+        _ => rng.gen_range(asteroid_sizes.big.clone()),
+    };
+
+    let amount = 1;
+    ev_asteroid_spawn.send(AsteroidSpawnEvent {
+        amount,
+        pos: vec2(x, y),
+        radius,
+    });
+}
+
+fn asteroid_generation_system(
+    mut commands: Commands,
+    mut rng: Local<Random>,
+    mut ev_asteroid_spawn: EventReader<AsteroidSpawnEvent>,
+) {
+    for AsteroidSpawnEvent {
+        amount,
+        pos,
+        radius,
+    } in ev_asteroid_spawn.iter()
+    {
+        let a = rng.gen_range(7..12);
+
+        let mut points = Vec::new();
+        let angle_inc = 360.0 / a as f32;
+        let mut bounding = 0.0;
+        for i in 1..=a {
+            let r = rng.gen_range((radius * 0.7)..*radius);
+            if r > bounding {
+                bounding = r;
+            }
+            let rot = (angle_inc * i as f32).to_radians();
+            points.push(vec2(pos.x + r * rot.sin(), pos.y - r * rot.cos()));
+        }
+
+        let shape = shapes::Polygon {
+            points,
+            closed: true,
+        };
+
+        let _asteroid = commands
+            .spawn()
+            .insert_bundle(
+                (GeometryBuilder::build_as(
+                    &shape,
+                    DrawMode::Outlined {
+                        outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * SCALE),
+                        fill_mode: FillMode::color(Color::NONE),
+                    },
+                    Transform {
+                        scale: Vec3::splat(SCALE),
+                        translation: vec3(pos.x, pos.y, 1.0),
+                        ..Default::default()
+                    },
+                )),
+            )
+            .insert(Bounding::from(bounding))
+            .insert(BoundaryWrap)
+            .insert(Velocity::from(vec2(10.0, 10.0)))
+            .insert(AngularVelocity::from(0.05));
+    }
+}
+
+pub fn polygon(origo: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
+    let mut points = Vec::new();
+    let angle_inc = 360.0 / amount as f32;
+
+    for i in 1..=amount {
+        let rot = (angle_inc * i as f32).to_radians();
+        points.push(vec2(origo.x + r * rot.sin(), origo.y - r * rot.cos()));
+    }
+
+    points
+}
+// let mut asteroids = Vec::new();
+//     let angle_inc = 360.0 / amount as f32;
+
+//     for i in 1..=amount {
+//         let rot =
+//             ((angle_inc * i as f32 + (30.0 * (rand::gen_range(0.1, 1.0)))) % 360.0).to_radians();
+//         let pos = vec2(spawn_point.x + r * rot.sin(), spawn_point.y - r * rot.cos());
+//         let vel = pos * ASTEROID_VEL / 20.0 / size;
+//         let points = polygon(vec2(0.0, 0.0), 8, size * scl);
+//         let w = points[0].distance(points[(points.len() / 2) as usize]);
+//         let a = Asteroid {
+//             pos,
+//             vel,
+//             size,
+//             points,
+//             w,
+//             angle: rot,
+//             collision: false,
+//         };
+//         asteroids.push(a)
+//     }
+
+//     asteroids
 
 fn boundary_wrapping_system(
     window: Res<WindowDescriptor>,
@@ -211,6 +352,12 @@ impl Drive {
     }
 }
 
+#[derive(Debug, Component)]
+struct AsteroidSizes {
+    big: Range<f32>,
+    medium: Range<f32>,
+    small: Range<f32>,
+}
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 struct Bounding(f32);
 #[derive(Debug, Component)]
