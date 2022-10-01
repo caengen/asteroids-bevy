@@ -2,6 +2,7 @@ use bevy::{
     math::{const_vec2, vec2, vec3},
     prelude::*,
     time::FixedTimestep,
+    transform,
     window::PresentMode,
 };
 use bevy_prototype_lyon::{
@@ -10,7 +11,7 @@ use bevy_prototype_lyon::{
         tess::{geom::Rotation, math::Angle},
         *,
     },
-    shapes::Polygon,
+    shapes::{Circle, Polygon},
 };
 use derive_more::From;
 use rand::Rng;
@@ -62,6 +63,7 @@ fn main() {
         .add_system(boundary_wrapping_system)
         .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(1.0)))
         .add_system(asteroid_generation_system)
+        .add_system(cannon_control_system)
         .run();
 }
 
@@ -103,7 +105,8 @@ fn setup_system(mut commands: Commands) {
         .insert(AngularVelocity::default())
         .insert(Damping::from(PLAYER_DAMPING))
         .insert(SteeringControl::from(Angle::degrees(180.0)))
-        .insert(Drive::new(1.5));
+        .insert(Drive::new(1.5))
+        .insert(Cannon::from(400.0));
 }
 
 pub struct AsteroidSpawnEvent {
@@ -155,45 +158,47 @@ fn asteroid_generation_system(
         radius,
     } in ev_asteroid_spawn.iter()
     {
-        let a = rng.gen_range(7..12);
+        for i in 0..*amount {
+            let a = rng.gen_range(7..12);
 
-        let mut points = Vec::new();
-        let angle_inc = 360.0 / a as f32;
-        let mut bounding = 0.0;
-        for i in 1..=a {
-            let r = rng.gen_range((radius * 0.7)..*radius);
-            if r > bounding {
-                bounding = r;
+            let mut points = Vec::new();
+            let angle_inc = 360.0 / a as f32;
+            let mut bounding = 0.0;
+            for i in 1..=a {
+                let r = rng.gen_range((radius * 0.7)..*radius);
+                if r > bounding {
+                    bounding = r;
+                }
+                let rot = (angle_inc * i as f32).to_radians();
+                points.push(vec2(pos.x + r * rot.sin(), pos.y - r * rot.cos()));
             }
-            let rot = (angle_inc * i as f32).to_radians();
-            points.push(vec2(pos.x + r * rot.sin(), pos.y - r * rot.cos()));
+
+            let shape = shapes::Polygon {
+                points,
+                closed: true,
+            };
+
+            let _asteroid = commands
+                .spawn()
+                .insert_bundle(
+                    (GeometryBuilder::build_as(
+                        &shape,
+                        DrawMode::Outlined {
+                            outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * SCALE),
+                            fill_mode: FillMode::color(Color::NONE),
+                        },
+                        Transform {
+                            scale: Vec3::splat(SCALE),
+                            translation: vec3(pos.x, pos.y, 1.0),
+                            ..Default::default()
+                        },
+                    )),
+                )
+                .insert(Bounding::from(bounding))
+                .insert(BoundaryWrap)
+                .insert(Velocity::from(vec2(10.0, 10.0)))
+                .insert(AngularVelocity::from(0.05));
         }
-
-        let shape = shapes::Polygon {
-            points,
-            closed: true,
-        };
-
-        let _asteroid = commands
-            .spawn()
-            .insert_bundle(
-                (GeometryBuilder::build_as(
-                    &shape,
-                    DrawMode::Outlined {
-                        outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * SCALE),
-                        fill_mode: FillMode::color(Color::NONE),
-                    },
-                    Transform {
-                        scale: Vec3::splat(SCALE),
-                        translation: vec3(pos.x, pos.y, 1.0),
-                        ..Default::default()
-                    },
-                )),
-            )
-            .insert(Bounding::from(bounding))
-            .insert(BoundaryWrap)
-            .insert(Velocity::from(vec2(10.0, 10.0)))
-            .insert(AngularVelocity::from(0.05));
     }
 }
 
@@ -208,50 +213,75 @@ pub fn polygon(origo: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
 
     points
 }
-// let mut asteroids = Vec::new();
-//     let angle_inc = 360.0 / amount as f32;
-
-//     for i in 1..=amount {
-//         let rot =
-//             ((angle_inc * i as f32 + (30.0 * (rand::gen_range(0.1, 1.0)))) % 360.0).to_radians();
-//         let pos = vec2(spawn_point.x + r * rot.sin(), spawn_point.y - r * rot.cos());
-//         let vel = pos * ASTEROID_VEL / 20.0 / size;
-//         let points = polygon(vec2(0.0, 0.0), 8, size * scl);
-//         let w = points[0].distance(points[(points.len() / 2) as usize]);
-//         let a = Asteroid {
-//             pos,
-//             vel,
-//             size,
-//             points,
-//             w,
-//             angle: rot,
-//             collision: false,
-//         };
-//         asteroids.push(a)
-//     }
-
-//     asteroids
 
 fn boundary_wrapping_system(
     window: Res<WindowDescriptor>,
     mut query: Query<(&mut Transform, &Bounding, With<BoundaryWrap>)>,
 ) {
     for (mut transform, bound, _) in query.iter_mut() {
-        if (transform.translation.x + bound.0) > (window.width / 2.0) {
-            transform.translation.x = -window.width / 2.0 - bound.0;
-        } else if (transform.translation.x - bound.0) < (-window.width / 2.0) {
-            transform.translation.x = window.width / 2.0 + bound.0;
+        let w = window.width;
+        let h = window.height;
+        let r = bound.0;
+        let Vec3 { x, y, z: _ } = transform.translation;
+
+        if (x - r) > (w / 2.0) {
+            transform.translation.x = -w / 2.0 - r;
+        } else if (x - r) < (-w / 2.0) {
+            transform.translation.x = w / 2.0 + r;
         }
 
-        if (transform.translation.y + bound.0) > (window.height / 2.0) {
-            transform.translation.y = -window.height / 2.0 - bound.0;
-        } else if (transform.translation.y - bound.0) < (-window.height / 2.0) {
-            transform.translation.y = window.height / 2.0 + bound.0;
+        if (y + r) > (h / 2.0) {
+            transform.translation.y = -h / 2.0 - r;
+        } else if (y - r) < (-h / 2.0) {
+            transform.translation.y = h / 2.0 + r;
         }
     }
 }
 
-fn drive_control_system(mut query: Query<(&mut Drive)>, keyboard: Res<Input<KeyCode>>) {
+fn cannon_control_system(
+    mut commands: Commands,
+    query: Query<(&Transform, &Cannon)>,
+    keyboard: Res<Input<KeyCode>>,
+) {
+    for (transform, cannon) in query.iter() {
+        if keyboard.just_pressed(KeyCode::Space) {
+            let direction = transform.rotation * -Vec3::Y;
+            let center = vec2(transform.translation.x, transform.translation.y);
+            let shape = shapes::Circle {
+                center,
+                radius: 0.25,
+            };
+
+            let _bullet = commands
+                .spawn()
+                .insert_bundle(
+                    (GeometryBuilder::build_as(
+                        &shape,
+                        DrawMode::Outlined {
+                            outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * SCALE),
+                            fill_mode: FillMode::color(Color::WHITE),
+                        },
+                        Transform {
+                            scale: Vec3::splat(SCALE),
+                            translation: vec3(
+                                transform.translation.x,
+                                transform.translation.y,
+                                1.0,
+                            ),
+                            ..Default::default()
+                        },
+                    )),
+                )
+                .insert(Bounding::from(0.125))
+                .insert(Velocity::from(vec2(
+                    cannon.0 * direction.x,
+                    cannon.0 * direction.y,
+                )));
+        }
+    }
+}
+
+fn drive_control_system(mut query: Query<&mut Drive>, keyboard: Res<Input<KeyCode>>) {
     for mut drive in query.iter_mut() {
         drive.on = keyboard.pressed(KeyCode::Up);
     }
@@ -338,6 +368,9 @@ struct Ship {
     state: ShipState,
 }
 
+#[derive(Debug, Component, Default, Deref, DerefMut, From)]
+struct Cannon(f32);
+
 #[derive(Debug, Component)]
 struct Drive {
     pub on: bool,
@@ -351,6 +384,9 @@ impl Drive {
         }
     }
 }
+
+#[derive(Debug, Component, Default, Deref, DerefMut, From)]
+struct Bullet(Timer);
 
 #[derive(Debug, Component)]
 struct AsteroidSizes {
