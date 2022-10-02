@@ -65,7 +65,8 @@ fn main() {
         .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(1.0)))
         .add_system(asteroid_generation_system)
         .add_system(cannon_control_system)
-        .add_system(flick_system)
+        // .add_system(flick_system)
+        // .add_system(player_state_system)
         .run();
 }
 
@@ -77,15 +78,12 @@ fn main() {
 // }
 
 fn setup_system(mut commands: Commands) {
+    commands.spawn_bundle(Camera2dBundle::default());
     let shape = shapes::Polygon {
         points: scaled_ship_points(),
         closed: false,
     };
-
-    commands.spawn_bundle(Camera2dBundle::default());
-
     let mut player = commands.spawn();
-    // commands.spawn().insert(Ship::spawn(Duration::from_secs(0)));
     player
         .insert_bundle(
             (GeometryBuilder::build_as(
@@ -101,6 +99,9 @@ fn setup_system(mut commands: Commands) {
                 },
             )),
         )
+        .insert(Ship {
+            state: ShipState::Spawning(Timer::new(Duration::from_secs(2), false)),
+        })
         .insert(Bounding::from(0.5))
         .insert(BoundaryWrap)
         .insert(Velocity::default())
@@ -109,12 +110,37 @@ fn setup_system(mut commands: Commands) {
         .insert(SteeringControl::from(Angle::degrees(180.0)))
         .insert(Drive::new(1.5))
         .insert(Visibility::default())
-        .insert(Cannon::from(400.0))
-        .insert(Flick {
-            duration: Timer::new(Duration::from_millis(2250), false),
-            switch_timer: Timer::new(Duration::from_millis(150), true),
-        });
+        .insert(Cannon::from(400.0));
+    // .insert(Flick {
+    //     duration: Timer::new(Duration::from_millis(2250), false),
+    //     switch_timer: Timer::new(Duration::from_millis(150), true),
+    // });
 }
+
+// fn player_state_system(
+//     mut commands: Commands,
+//     time: Res<Time>,
+//     mut query: Query<(Entity, &mut Ship, &mut Transform)>,
+// ) {
+//     for (entity, mut ship, mut transform) in query.iter_mut() {
+//         match ship.state {
+//             ShipState::Spawning(ref mut timer) => {
+//                 if timer.finished() {
+//                     // ship.state = ShipState::Alive;
+//                     commands
+//                         .entity(entity)
+//                         .insert(SteeringControl::from(Angle::degrees(180.0)))
+//                         .insert(Drive::new(1.5))
+//                         .insert(Cannon::from(400.0))
+//                         .log_components();
+//                 }
+//                 timer.tick(time.delta());
+//             }
+//             ShipState::Dead(timer) => {}
+//             ShipState::Alive => {}
+//         }
+//     }
+// }
 
 pub struct AsteroidSpawnEvent {
     pub pos: Vec2,
@@ -253,10 +279,10 @@ fn boundary_wrapping_system(
 
 fn cannon_control_system(
     mut commands: Commands,
-    query: Query<(&Transform, &Cannon)>,
+    query: Query<(&Transform, &Bounding, &Cannon)>,
     keyboard: Res<Input<KeyCode>>,
 ) {
-    for (transform, cannon) in query.iter() {
+    for (transform, bounding, cannon) in query.iter() {
         if keyboard.just_pressed(KeyCode::Space) {
             let direction = transform.rotation * -Vec3::Y; //TODO: find out why this works
             let shape = shapes::Circle {
@@ -275,7 +301,8 @@ fn cannon_control_system(
                         },
                         Transform {
                             scale: Vec3::splat(SCALE),
-                            translation: transform.translation,
+                            translation: transform.translation
+                                + vec3(direction.x * bounding.0, direction.y * bounding.0, 0.0),
                             ..Default::default()
                         },
                     )),
@@ -395,7 +422,7 @@ struct Flick {
     duration: Timer,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Default)]
 struct Ship {
     state: ShipState,
 }
@@ -473,4 +500,10 @@ enum ShipState {
     Alive,
     Dead(Timer),
     Spawning(Timer),
+}
+
+impl Default for ShipState {
+    fn default() -> Self {
+        ShipState::Alive
+    }
 }
