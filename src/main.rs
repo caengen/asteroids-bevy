@@ -259,10 +259,9 @@ fn cannon_control_system(
     for (transform, cannon) in query.iter() {
         if keyboard.just_pressed(KeyCode::Space) {
             let direction = transform.rotation * -Vec3::Y; //TODO: find out why this works
-            let center = vec2(transform.translation.x, transform.translation.y);
             let shape = shapes::Circle {
-                center,
                 radius: CANNON_BULLET_RADIUS,
+                ..Default::default()
             };
 
             let _bullet = commands
@@ -276,11 +275,7 @@ fn cannon_control_system(
                         },
                         Transform {
                             scale: Vec3::splat(SCALE),
-                            translation: vec3(
-                                transform.translation.x,
-                                transform.translation.y,
-                                1.0,
-                            ),
+                            translation: transform.translation,
                             ..Default::default()
                         },
                     )),
