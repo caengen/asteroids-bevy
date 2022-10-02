@@ -27,6 +27,7 @@ pub const SCREEN: Vec2 = Vec2::from_array([SCREEN_WIDTH, SCREEN_HEIGHT]);
 pub const GAME_WIDTH: f32 = 240.0;
 pub const SCALE: f32 = SCREEN_WIDTH / GAME_WIDTH;
 // pub const PIXELS_PER_METER: f32 = 30.0 / SCALE;
+pub const CANNON_BULLET_RADIUS: f32 = 0.25;
 
 pub const PLAYER_DAMPING: f32 = 0.998;
 pub const POLY_LINE_WIDTH: f32 = 0.075;
@@ -64,6 +65,7 @@ fn main() {
         .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(1.0)))
         .add_system(asteroid_generation_system)
         .add_system(cannon_control_system)
+        .add_system(flick_system)
         .run();
 }
 
@@ -106,7 +108,12 @@ fn setup_system(mut commands: Commands) {
         .insert(Damping::from(PLAYER_DAMPING))
         .insert(SteeringControl::from(Angle::degrees(180.0)))
         .insert(Drive::new(1.5))
-        .insert(Cannon::from(400.0));
+        .insert(Visibility::default())
+        .insert(Cannon::from(400.0))
+        .insert(Flick {
+            duration: Timer::new(Duration::from_millis(2250), false),
+            switch_timer: Timer::new(Duration::from_millis(150), true),
+        });
 }
 
 pub struct AsteroidSpawnEvent {
@@ -195,7 +202,7 @@ fn asteroid_generation_system(
                     )),
                 )
                 .insert(Bounding::from(bounding))
-                .insert(BoundaryWrap)
+                .insert(BoundaryRemoval)
                 .insert(Velocity::from(vec2(10.0, 10.0)))
                 .insert(AngularVelocity::from(0.05));
         }
@@ -213,6 +220,12 @@ pub fn polygon(origo: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
 
     points
 }
+
+// fn boundary_removal_system(
+//     window: Res<WindowDescriptor>,
+//     mut query: Query<(&mut Transform, &Bounding, With<BoundaryWrap>)>,
+// ) {
+// }
 
 fn boundary_wrapping_system(
     window: Res<WindowDescriptor>,
@@ -245,11 +258,11 @@ fn cannon_control_system(
 ) {
     for (transform, cannon) in query.iter() {
         if keyboard.just_pressed(KeyCode::Space) {
-            let direction = transform.rotation * -Vec3::Y;
+            let direction = transform.rotation * -Vec3::Y; //TODO: find out why this works
             let center = vec2(transform.translation.x, transform.translation.y);
             let shape = shapes::Circle {
                 center,
-                radius: 0.25,
+                radius: CANNON_BULLET_RADIUS,
             };
 
             let _bullet = commands
@@ -272,7 +285,7 @@ fn cannon_control_system(
                         },
                     )),
                 )
-                .insert(Bounding::from(0.125))
+                .insert(Bounding::from(CANNON_BULLET_RADIUS))
                 .insert(Velocity::from(vec2(
                     cannon.0 * direction.x,
                     cannon.0 * direction.y,
@@ -362,7 +375,31 @@ pub fn scaled_ship_points() -> Vec<Vec2> {
 
     vec![v1, v2, v4, v2, v3, v5, v3, v1]
 }
+
+fn flick_system(
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut Visibility, &mut Flick)>,
+    time: Res<Time>,
+) {
+    for (entity, mut visibility, mut flick) in query.iter_mut() {
+        flick.duration.tick(time.delta());
+        flick.switch_timer.tick(time.delta());
+
+        if flick.duration.finished() {
+            visibility.is_visible = true;
+            commands.entity(entity).remove::<Flick>();
+        } else if flick.switch_timer.just_finished() {
+            visibility.is_visible = !visibility.is_visible;
+        }
+    }
+}
 //2-4, 3-5
+#[derive(Debug, Component, Default, From)]
+struct Flick {
+    switch_timer: Timer,
+    duration: Timer,
+}
+
 #[derive(Debug, Component)]
 struct Ship {
     state: ShipState,
@@ -398,6 +435,8 @@ struct AsteroidSizes {
 struct Bounding(f32);
 #[derive(Debug, Component)]
 struct BoundaryWrap;
+#[derive(Debug, Component)]
+struct BoundaryRemoval;
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 struct Velocity(Vec2);
