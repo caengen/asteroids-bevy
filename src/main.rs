@@ -65,6 +65,7 @@ fn main() {
         .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(1.0)))
         .add_system(asteroid_generation_system)
         .add_system(cannon_control_system)
+        .add_system(boundary_removal_system)
         // .add_system(flick_system)
         // .add_system(player_state_system)
         .run();
@@ -247,11 +248,21 @@ pub fn polygon(origo: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
     points
 }
 
-// fn boundary_removal_system(
-//     window: Res<WindowDescriptor>,
-//     mut query: Query<(&mut Transform, &Bounding, With<BoundaryWrap>)>,
-// ) {
-// }
+fn boundary_removal_system(
+    mut commands: Commands,
+    window: Res<WindowDescriptor>,
+    query: Query<(Entity, &Transform, &Bounding, With<BoundaryRemoval>)>,
+) {
+    let w = window.width / 2.0;
+    let h = window.height / 2.0;
+    for (entity, transform, bounding, _) in query.iter() {
+        let Vec3 { x, y, z: _ } = transform.translation;
+        let r = bounding.0;
+        if x - w > r || x + r < -w || y - h > r || y + r < -h {
+            commands.entity(entity).despawn();
+        }
+    }
+}
 
 fn boundary_wrapping_system(
     window: Res<WindowDescriptor>,
@@ -308,6 +319,7 @@ fn cannon_control_system(
                     )),
                 )
                 .insert(Bounding::from(CANNON_BULLET_RADIUS))
+                .insert(BoundaryRemoval)
                 .insert(Velocity::from(vec2(
                     cannon.0 * direction.x,
                     cannon.0 * direction.y,
