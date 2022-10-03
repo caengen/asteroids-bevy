@@ -62,7 +62,7 @@ fn main() {
         .add_system(drive_system)
         .add_system(damping_system)
         .add_system(boundary_wrapping_system)
-        .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(1.0)))
+        .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
         .add_system(asteroid_generation_system)
         .add_system(cannon_control_system)
         .add_system(boundary_removal_system)
@@ -159,11 +159,16 @@ fn asteroid_spawn_system(
         return;
     }
 
-    let h = window.height / 2.0;
-    let w = window.width / 2.0;
+    let h = window.height / 2.0 / SCALE;
+    let w = window.width / 2.0 / SCALE;
 
-    let x = rng.gen_range(-w..w);
-    let y = rng.gen_range(-h..h);
+    let side = rng.gen_range(0..=3);
+    let pos = match side {
+        0 => vec2(-w, rng.gen_range(-h..h)),
+        1 => vec2(w, rng.gen_range(-h..h)),
+        2 => vec2(rng.gen_range(-w..w), -h),
+        _ => vec2(rng.gen_range(-w..w), h),
+    };
 
     let size = rng.gen_range(0..=10);
     let radius = match size {
@@ -176,7 +181,7 @@ fn asteroid_spawn_system(
     let amount = 1;
     ev_asteroid_spawn.send(AsteroidSpawnEvent {
         amount,
-        pos: vec2(x, y),
+        pos,
         radius,
     });
 }
@@ -192,14 +197,14 @@ fn asteroid_generation_system(
         radius,
     } in ev_asteroid_spawn.iter()
     {
-        for i in 0..*amount {
+        for _i in 0..*amount {
             let a = rng.gen_range(7..12);
 
             let mut points = Vec::new();
             let angle_inc = 360.0 / a as f32;
             let mut bounding = 0.0;
             for i in 1..=a {
-                let r = rng.gen_range((radius * 0.7)..*radius);
+                let r = rng.gen_range((radius * 0.5)..*radius);
                 if r > bounding {
                     bounding = r;
                 }
@@ -212,25 +217,35 @@ fn asteroid_generation_system(
                 closed: true,
             };
 
+            let start = vec3(pos.x, pos.y, 1.0);
+            let dest = vec3(1.0, 1.0, 1.0);
+            let angle = start.angle_between(dest);
+            let direction = Quat::from_rotation_z(angle) * -Vec3::Y; //TODO: find out why this works
+            let force = rng.gen_range(10.0..30.00);
+            let vel = vec2(force * direction.x, force * direction.y);
+
             let _asteroid = commands
                 .spawn()
                 .insert_bundle(
                     (GeometryBuilder::build_as(
                         &shape,
                         DrawMode::Outlined {
-                            outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * SCALE),
+                            outline_mode: StrokeMode::new(
+                                Color::WHITE,
+                                POLY_LINE_WIDTH * 1.25 * SCALE,
+                            ),
                             fill_mode: FillMode::color(Color::NONE),
                         },
                         Transform {
                             scale: Vec3::splat(SCALE),
-                            translation: vec3(pos.x, pos.y, 1.0),
+                            translation: start,
                             ..Default::default()
                         },
                     )),
                 )
                 .insert(Bounding::from(bounding))
-                .insert(BoundaryRemoval)
-                .insert(Velocity::from(vec2(10.0, 10.0)))
+                .insert(BoundaryRemoval(false))
+                .insert(Velocity::from(vel))
                 .insert(AngularVelocity::from(0.05));
         }
     }
@@ -251,14 +266,18 @@ pub fn polygon(origo: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
 fn boundary_removal_system(
     mut commands: Commands,
     window: Res<WindowDescriptor>,
-    query: Query<(Entity, &Transform, &Bounding, With<BoundaryRemoval>)>,
+    mut query: Query<(Entity, &Transform, &Bounding, &mut BoundaryRemoval)>,
 ) {
     let w = window.width / 2.0;
     let h = window.height / 2.0;
-    for (entity, transform, bounding, _) in query.iter() {
+    for (entity, transform, bounding, mut removal) in query.iter_mut() {
         let Vec3 { x, y, z: _ } = transform.translation;
         let r = bounding.0;
-        if x - w > r || x + r < -w || y - h > r || y + r < -h {
+        if !removal.0 {
+            if x + r > -w && x + r < w && y + r < h && y + r > -h {
+                removal.0 = true;
+            }
+        } else if x - w > r || x + r < -w || y - h > r || y + r < -h {
             commands.entity(entity).despawn();
         }
     }
@@ -319,7 +338,7 @@ fn cannon_control_system(
                     )),
                 )
                 .insert(Bounding::from(CANNON_BULLET_RADIUS))
-                .insert(BoundaryRemoval)
+                .insert(BoundaryRemoval(true))
                 .insert(Velocity::from(vec2(
                     cannon.0 * direction.x,
                     cannon.0 * direction.y,
@@ -469,8 +488,8 @@ struct AsteroidSizes {
 struct Bounding(f32);
 #[derive(Debug, Component)]
 struct BoundaryWrap;
-#[derive(Debug, Component)]
-struct BoundaryRemoval;
+#[derive(Debug, Component, Deref, DerefMut)]
+struct BoundaryRemoval(bool);
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 struct Velocity(Vec2);
