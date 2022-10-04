@@ -66,6 +66,8 @@ fn main() {
         .add_system(asteroid_generation_system)
         .add_system(cannon_control_system)
         .add_system(boundary_removal_system)
+        .add_system(bullet_despawn_system)
+        // .add_system(collision_system::<Bullet, Asteroid>)
         // .add_system(flick_system)
         // .add_system(player_state_system)
         .run();
@@ -118,7 +120,14 @@ fn setup_system(mut commands: Commands) {
     // });
 }
 
-// fn player_state_system(
+// TODO
+// fn collision_system<Collider, Victim>(
+//     collider: Query<(&Transform, With<Collider>)>,
+//     victim: Query<(&Transform, With<Victim>)>,
+// ) {
+// }
+
+// fn player_state_system(`````````````
 //     mut commands: Commands,
 //     time: Res<Time>,
 //     mut query: Query<(Entity, &mut Ship, &mut Transform)>,
@@ -246,7 +255,8 @@ fn asteroid_generation_system(
                 .insert(Bounding::from(bounding))
                 .insert(BoundaryRemoval(false))
                 .insert(Velocity::from(vel))
-                .insert(AngularVelocity::from(0.05));
+                .insert(AngularVelocity::from(0.05))
+                .insert(Asteroid);
         }
     }
 }
@@ -277,7 +287,7 @@ fn boundary_removal_system(
             if x + r > -w && x + r < w && y + r < h && y + r > -h {
                 removal.0 = true;
             }
-        } else if x - w > r || x + r < -w || y - h > r || y + r < -h {
+        } else if x + r < -w || x + r > w || y + r > h || y + r < -h {
             commands.entity(entity).despawn();
         }
     }
@@ -288,21 +298,21 @@ fn boundary_wrapping_system(
     mut query: Query<(&mut Transform, &Bounding, With<BoundaryWrap>)>,
 ) {
     for (mut transform, bound, _) in query.iter_mut() {
-        let w = window.width;
-        let h = window.height;
+        let w = window.width / 2.0;
+        let h = window.height / 2.0;
         let r = bound.0;
         let Vec3 { x, y, z: _ } = transform.translation;
 
-        if (x - r) > (w / 2.0) {
-            transform.translation.x = -w / 2.0 - r;
-        } else if (x - r) < (-w / 2.0) {
-            transform.translation.x = w / 2.0 + r;
+        if (x - r) > w {
+            transform.translation.x = -w - r;
+        } else if (x - r) < -w {
+            transform.translation.x = w + r;
         }
 
-        if (y + r) > (h / 2.0) {
-            transform.translation.y = -h / 2.0 - r;
-        } else if (y - r) < (-h / 2.0) {
-            transform.translation.y = h / 2.0 + r;
+        if (y + r) > h {
+            transform.translation.y = -h - r;
+        } else if (y - r) < -h {
+            transform.translation.y = h + r;
         }
     }
 }
@@ -342,7 +352,21 @@ fn cannon_control_system(
                 .insert(Velocity::from(vec2(
                     cannon.0 * direction.x,
                     cannon.0 * direction.y,
-                )));
+                )))
+                .insert(Bullet(Timer::new(Duration::from_millis(1250), false)));
+        }
+    }
+}
+
+fn bullet_despawn_system(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut Bullet)>,
+) {
+    for (entity, mut bullet) in query.iter_mut() {
+        bullet.0.tick(time.delta());
+        if bullet.0.finished() {
+            commands.entity(entity).despawn();
         }
     }
 }
@@ -446,7 +470,9 @@ fn flick_system(
         }
     }
 }
-//2-4, 3-5
+
+#[derive(Debug, Component)]
+struct Asteroid;
 #[derive(Debug, Component, Default, From)]
 struct Flick {
     switch_timer: Timer,
@@ -475,7 +501,7 @@ impl Drive {
     }
 }
 
-#[derive(Debug, Component, Default, Deref, DerefMut, From)]
+#[derive(Debug, Component)]
 struct Bullet(Timer);
 
 #[derive(Debug, Component)]
