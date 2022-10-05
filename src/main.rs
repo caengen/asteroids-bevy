@@ -1,3 +1,4 @@
+use bevy::ecs::component::Component;
 use bevy::{
     math::{const_vec2, vec2, vec3},
     prelude::*,
@@ -5,6 +6,8 @@ use bevy::{
     transform,
     window::PresentMode,
 };
+use bevy_inspector_egui::WorldInspectorPlugin;
+use bevy_inspector_egui::{Inspectable, InspectorPlugin};
 use bevy_prototype_lyon::{
     entity::ShapeBundle,
     prelude::{
@@ -25,12 +28,13 @@ const SCREEN_WIDTH: f32 = 960.0;
 pub const SCREEN: Vec2 = Vec2::from_array([SCREEN_WIDTH, SCREEN_HEIGHT]);
 // pub const TIME_STEP: f32 = 1.0 / 60.0;
 pub const GAME_WIDTH: f32 = 240.0;
-pub const SCALE: f32 = SCREEN_WIDTH / GAME_WIDTH;
 // pub const PIXELS_PER_METER: f32 = 30.0 / SCALE;
-pub const CANNON_BULLET_RADIUS: f32 = 0.25;
+pub const CANNON_BULLET_RADIUS: f32 = 1.0;
 
+pub const PLAYER_SIZE: f32 = 20.0;
 pub const PLAYER_DAMPING: f32 = 0.998;
-pub const POLY_LINE_WIDTH: f32 = 0.075;
+pub const POLY_LINE_WIDTH: f32 = 1.0;
+pub const ASTEROID_LINE_WIDTH: f32 = 3.0;
 
 pub const DARK: (f32, f32, f32) = (49.0, 47.0, 40.0);
 pub const LIGHT: (f32, f32, f32) = (218.0, 216.0, 209.0);
@@ -40,21 +44,23 @@ fn main() {
         .insert_resource(WindowDescriptor {
             title: "asteroids-bevy".to_string(),
             present_mode: PresentMode::Fifo,
-            width: SCREEN.x,
-            height: SCREEN.y,
+            width: SCREEN_WIDTH,
+            height: SCREEN_HEIGHT,
             ..default()
         })
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(Msaa { samples: 4 })
         .insert_resource(AsteroidSizes {
-            big: 20.0..25.0,
-            medium: 10.0..15.0,
-            small: 5.0..7.5,
+            big: 40.0..50.0,
+            medium: 20.0..30.0,
+            small: 10.0..15.0,
         })
         .add_event::<AsteroidSpawnEvent>()
+        .add_event::<HitEvent>()
         .add_plugins(DefaultPlugins)
         .add_plugin(ShapePlugin)
         .add_plugin(RandomPlugin)
+        .add_plugin(WorldInspectorPlugin::new())
         .add_startup_system(setup_system)
         .add_system(steering_control_system)
         .add_system(movement_system)
@@ -67,7 +73,8 @@ fn main() {
         .add_system(cannon_control_system)
         .add_system(boundary_removal_system)
         .add_system(bullet_despawn_system)
-        // .add_system(collision_system::<Bullet, Asteroid>)
+        .add_system(collision_system::<Bullet, Asteroid>)
+        .add_system(hit_system)
         // .add_system(flick_system)
         // .add_system(player_state_system)
         .run();
@@ -83,7 +90,7 @@ fn main() {
 fn setup_system(mut commands: Commands) {
     commands.spawn_bundle(Camera2dBundle::default());
     let shape = shapes::Polygon {
-        points: scaled_ship_points(),
+        points: ship_points(),
         closed: false,
     };
     let mut player = commands.spawn();
@@ -92,11 +99,10 @@ fn setup_system(mut commands: Commands) {
             (GeometryBuilder::build_as(
                 &shape,
                 DrawMode::Outlined {
-                    outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * SCALE),
+                    outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH),
                     fill_mode: FillMode::color(Color::WHITE),
                 },
                 Transform {
-                    scale: Vec3::splat(SCALE),
                     rotation: Quat::from_rotation_z(180.0_f32.to_radians()),
                     ..Default::default()
                 },
@@ -105,13 +111,13 @@ fn setup_system(mut commands: Commands) {
         .insert(Ship {
             state: ShipState::Spawning(Timer::new(Duration::from_secs(2), false)),
         })
-        .insert(Bounding::from(0.5))
+        .insert(Bounding::from(PLAYER_SIZE / 2.0))
         .insert(BoundaryWrap)
         .insert(Velocity::default())
         .insert(AngularVelocity::default())
         .insert(Damping::from(PLAYER_DAMPING))
         .insert(SteeringControl::from(Angle::degrees(180.0)))
-        .insert(Drive::new(1.5))
+        .insert(Drive::new(3.0))
         .insert(Visibility::default())
         .insert(Cannon::from(400.0));
     // .insert(Flick {
@@ -121,11 +127,30 @@ fn setup_system(mut commands: Commands) {
 }
 
 // TODO
-// fn collision_system<Collider, Victim>(
-//     collider: Query<(&Transform, With<Collider>)>,
-//     victim: Query<(&Transform, With<Victim>)>,
-// ) {
-// }
+fn collision_system<A: Component, B: Component>(
+    mut ev_hit: EventWriter<HitEvent>,
+    colliders: Query<(Entity, &Transform, &Bounding, With<A>)>,
+    victims: Query<(Entity, &Transform, &Bounding, With<B>)>,
+) {
+    for (_collider, c_trans, c_bound, _) in colliders.iter() {
+        let Vec3 { x: x1, y: y1, z: _ } = c_trans.translation;
+        let r1 = c_bound.0;
+        for (victim, v_trans, v_bound, _) in victims.iter() {
+            let Vec3 { x: x2, y: y2, z: _ } = v_trans.translation;
+            let r2 = v_bound.0;
+            let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
+            if d < r1 + r2 {
+                ev_hit.send(HitEvent { entity: victim })
+            }
+        }
+    }
+}
+
+fn hit_system(mut commands: Commands, mut ev_hit: EventReader<HitEvent>) {
+    for HitEvent { entity } in ev_hit.iter() {
+        commands.entity(*entity).despawn();
+    }
+}
 
 // fn player_state_system(`````````````
 //     mut commands: Commands,
@@ -152,6 +177,9 @@ fn setup_system(mut commands: Commands) {
 //     }
 // }
 
+pub struct HitEvent {
+    entity: Entity,
+}
 pub struct AsteroidSpawnEvent {
     pub pos: Vec2,
     pub radius: f32,
@@ -163,20 +191,22 @@ fn asteroid_spawn_system(
     asteroid_sizes: Res<AsteroidSizes>,
     mut rng: Local<Random>,
     mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
+    existing_asteroids: Query<&Asteroid>,
 ) {
-    if !rng.gen_bool(1.0 / 3.0) {
+    let len = existing_asteroids.iter().len();
+    if len >= 10 || !rng.gen_bool(1.0 / 3.0) {
         return;
     }
 
-    let h = window.height / 2.0 / SCALE;
-    let w = window.width / 2.0 / SCALE;
+    let h = window.height;
+    let w = window.width;
 
     let side = rng.gen_range(0..=3);
     let pos = match side {
-        0 => vec2(-w, rng.gen_range(-h..h)),
-        1 => vec2(w, rng.gen_range(-h..h)),
-        2 => vec2(rng.gen_range(-w..w), -h),
-        _ => vec2(rng.gen_range(-w..w), h),
+        0 => vec2(0.0, rng.gen_range(0.0..h)),
+        1 => vec2(w, rng.gen_range(0.0..h)),
+        2 => vec2(rng.gen_range(0.0..w), 0.0),
+        _ => vec2(rng.gen_range(0.0..w), h),
     };
 
     let size = rng.gen_range(0..=10);
@@ -239,23 +269,19 @@ fn asteroid_generation_system(
                     (GeometryBuilder::build_as(
                         &shape,
                         DrawMode::Outlined {
-                            outline_mode: StrokeMode::new(
-                                Color::WHITE,
-                                POLY_LINE_WIDTH * 1.25 * SCALE,
-                            ),
+                            outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * 1.5),
                             fill_mode: FillMode::color(Color::NONE),
                         },
                         Transform {
-                            scale: Vec3::splat(SCALE),
                             translation: start,
                             ..Default::default()
                         },
                     )),
                 )
                 .insert(Bounding::from(bounding))
-                .insert(BoundaryRemoval(false))
-                .insert(Velocity::from(vel))
-                .insert(AngularVelocity::from(0.05))
+                // .insert(BoundaryRemoval(false))
+                // .insert(Velocity::from(vel))
+                // .insert(AngularVelocity::from(0.05))
                 .insert(Asteroid);
         }
     }
@@ -303,15 +329,15 @@ fn boundary_wrapping_system(
         let r = bound.0;
         let Vec3 { x, y, z: _ } = transform.translation;
 
-        if (x - r) > w {
+        if x > w + r {
             transform.translation.x = -w - r;
-        } else if (x - r) < -w {
+        } else if x < -w - r {
             transform.translation.x = w + r;
         }
 
-        if (y + r) > h {
+        if y > h + r {
             transform.translation.y = -h - r;
-        } else if (y - r) < -h {
+        } else if y < -h - r {
             transform.translation.y = h + r;
         }
     }
@@ -336,11 +362,10 @@ fn cannon_control_system(
                     (GeometryBuilder::build_as(
                         &shape,
                         DrawMode::Outlined {
-                            outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * SCALE),
+                            outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH),
                             fill_mode: FillMode::color(Color::WHITE),
                         },
                         Transform {
-                            scale: Vec3::splat(SCALE),
                             translation: transform.translation
                                 + vec3(direction.x * bounding.0, direction.y * bounding.0, 0.0),
                             ..Default::default()
@@ -427,27 +452,27 @@ fn movement_system(
     }
 }
 
-pub fn scaled_ship_points() -> Vec<Vec2> {
+pub fn ship_points() -> Vec<Vec2> {
     let rot = 0.0_f32.to_radians();
-    let sh = 1.0 * SCALE; // ship height
-    let sw = 1.0 * SCALE; // ship width
+    let h = PLAYER_SIZE; // ship height
+    let w = PLAYER_SIZE; // ship width
 
-    let v1 = vec2(rot.sin() * sh / 2., -rot.cos() * sh / 2.);
+    let v1 = vec2(rot.sin() * h / 2., -rot.cos() * h / 2.);
     let v2 = vec2(
-        -rot.cos() * sw / 2. - rot.sin() * sh / 2.,
-        -rot.sin() * sw / 2. + rot.cos() * sh / 2.,
+        -rot.cos() * w / 2. - rot.sin() * h / 2.,
+        -rot.sin() * w / 2. + rot.cos() * h / 2.,
     );
     let v3 = vec2(
-        rot.cos() * sw / 2. - rot.sin() * sh / 2.,
-        rot.sin() * sw / 2. + rot.cos() * sh / 2.,
+        rot.cos() * w / 2. - rot.sin() * h / 2.,
+        rot.sin() * w / 2. + rot.cos() * h / 2.,
     );
     let v4 = vec2(
-        -rot.cos() * sw / 1.5 - rot.sin() * sh / 1.5,
-        -rot.sin() * sw / 1.5 + rot.cos() * sh / 1.5,
+        -rot.cos() * w / 1.5 - rot.sin() * h / 1.5,
+        -rot.sin() * w / 1.5 + rot.cos() * h / 1.5,
     );
     let v5 = vec2(
-        rot.cos() * sw / 1.5 - rot.sin() * sh / 1.5,
-        rot.sin() * sw / 1.5 + rot.cos() * sh / 1.5,
+        rot.cos() * w / 1.5 - rot.sin() * h / 1.5,
+        rot.sin() * w / 1.5 + rot.cos() * h / 1.5,
     );
 
     vec![v1, v2, v4, v2, v3, v5, v3, v1]
