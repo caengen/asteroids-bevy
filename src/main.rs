@@ -74,6 +74,7 @@ fn main() {
         .add_system(boundary_removal_system)
         .add_system(bullet_despawn_system)
         .add_system(collision_system::<Bullet, Asteroid>)
+        .add_system(collision_system::<Asteroid, Bullet>)
         .add_system(hit_system)
         // .add_system(flick_system)
         // .add_system(player_state_system)
@@ -310,7 +311,7 @@ fn boundary_removal_system(
             if x + r > -w && x + r < w && y + r < h && y + r > -h {
                 removal.0 = true;
             }
-        } else if x + r < -w || x + r > w || y + r > h || y + r < -h {
+        } else if x < -w - r || x > w + r || y > h + r || y < -h - r {
             commands.entity(entity).despawn();
         }
     }
