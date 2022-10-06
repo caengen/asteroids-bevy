@@ -211,10 +211,10 @@ fn asteroid_spawn_system(
 
     let side = rng.gen_range(0..=3);
     let pos = match side {
-        0 => vec2(0.0, rng.gen_range(0.0..h)),
-        1 => vec2(w, rng.gen_range(0.0..h)),
-        2 => vec2(rng.gen_range(0.0..w), 0.0),
-        _ => vec2(rng.gen_range(0.0..w), h),
+        0 => vec2(-w, rng.gen_range(-h..h)),
+        1 => vec2(w, rng.gen_range(-h..h)),
+        2 => vec2(rng.gen_range(-w..w), -h),
+        _ => vec2(rng.gen_range(-w..w), h),
     };
 
     let amount = 1;
