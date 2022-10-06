@@ -198,16 +198,8 @@ fn asteroid_spawn_system(
         return;
     }
 
-    let h = window.height;
-    let w = window.width;
-
-    let side = rng.gen_range(0..=3);
-    let pos = match side {
-        0 => vec2(0.0, rng.gen_range(0.0..h)),
-        1 => vec2(w, rng.gen_range(0.0..h)),
-        2 => vec2(rng.gen_range(0.0..w), 0.0),
-        _ => vec2(rng.gen_range(0.0..w), h),
-    };
+    let h = window.height / 2.0;
+    let w = window.width / 2.0;
 
     let size = rng.gen_range(0..=10);
     let radius = match size {
@@ -215,6 +207,14 @@ fn asteroid_spawn_system(
         5..=8 => rng.gen_range(asteroid_sizes.medium.clone()),
         9..=10 => rng.gen_range(asteroid_sizes.small.clone()),
         _ => rng.gen_range(asteroid_sizes.big.clone()),
+    };
+
+    let side = rng.gen_range(0..=3);
+    let pos = match side {
+        0 => vec2(0.0, rng.gen_range(0.0..h)),
+        1 => vec2(w, rng.gen_range(0.0..h)),
+        2 => vec2(rng.gen_range(0.0..w), 0.0),
+        _ => vec2(rng.gen_range(0.0..w), h),
     };
 
     let amount = 1;
@@ -248,7 +248,7 @@ fn asteroid_generation_system(
                     bounding = r;
                 }
                 let rot = (angle_inc * i as f32).to_radians();
-                points.push(vec2(pos.x + r * rot.sin(), pos.y - r * rot.cos()));
+                points.push(vec2(r * rot.sin(), r * rot.cos()));
             }
 
             let shape = shapes::Polygon {
@@ -272,16 +272,13 @@ fn asteroid_generation_system(
                             outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * 1.5),
                             fill_mode: FillMode::color(Color::NONE),
                         },
-                        Transform {
-                            translation: start,
-                            ..Default::default()
-                        },
+                        Transform::default().with_translation(start),
                     )),
                 )
                 .insert(Bounding::from(bounding))
-                // .insert(BoundaryRemoval(false))
-                // .insert(Velocity::from(vel))
-                // .insert(AngularVelocity::from(0.05))
+                .insert(BoundaryRemoval(false))
+                .insert(Velocity::from(vel))
+                .insert(AngularVelocity::from(0.05))
                 .insert(Asteroid);
         }
     }
