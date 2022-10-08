@@ -39,6 +39,15 @@ pub const ASTEROID_LINE_WIDTH: f32 = 3.0;
 pub const DARK: (f32, f32, f32) = (49.0, 47.0, 40.0);
 pub const LIGHT: (f32, f32, f32) = (218.0, 216.0, 209.0);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, SystemLabel)]
+enum System {
+    Collision,
+    Input,
+    Movement,
+    Boundary,
+    Spawning,
+}
+
 fn main() {
     App::new()
         .insert_resource(WindowDescriptor {
@@ -51,8 +60,8 @@ fn main() {
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(Msaa { samples: 4 })
         .insert_resource(AsteroidSizes {
-            big: 40.0..50.0,
-            medium: 20.0..30.0,
+            big: 60.0..80.0,
+            medium: 40.0..50.0,
             small: 10.0..15.0,
         })
         .add_event::<AsteroidSpawnEvent>()
@@ -62,20 +71,39 @@ fn main() {
         .add_plugin(RandomPlugin)
         .add_plugin(WorldInspectorPlugin::new())
         .add_startup_system(setup_system)
-        .add_system(steering_control_system)
-        .add_system(movement_system)
-        .add_system(drive_control_system)
-        .add_system(drive_system)
-        .add_system(damping_system)
+        .add_system_set(
+            SystemSet::new()
+                .label(System::Input)
+                .with_system(steering_control_system)
+                .with_system(drive_control_system)
+                .with_system(cannon_control_system),
+        )
+        .add_system_set(
+            SystemSet::new()
+                .label(System::Movement)
+                .with_system(movement_system)
+                .with_system(drive_system)
+                .with_system(damping_system)
+                .after(System::Input),
+        )
+        .add_system_set(
+            SystemSet::new()
+                .label(System::Boundary)
+                .with_system(boundary_removal_system)
+                .with_system(bullet_despawn_system)
+                .after(System::Movement),
+        )
         .add_system(boundary_wrapping_system)
+        .add_system_set(
+            SystemSet::new()
+                .label(System::Collision)
+                .with_system(collision_system::<Bullet, Asteroid>)
+                .with_system(collision_system::<Asteroid, Bullet>)
+                .after(System::Boundary),
+        )
+        .add_system(hit_system.after(System::Collision))
         .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
         .add_system(asteroid_generation_system)
-        .add_system(cannon_control_system)
-        .add_system(boundary_removal_system)
-        .add_system(bullet_despawn_system)
-        .add_system(collision_system::<Bullet, Asteroid>)
-        .add_system(collision_system::<Asteroid, Bullet>)
-        .add_system(hit_system)
         // .add_system(flick_system)
         // .add_system(player_state_system)
         .run();
@@ -149,7 +177,7 @@ fn collision_system<A: Component, B: Component>(
 
 fn hit_system(mut commands: Commands, mut ev_hit: EventReader<HitEvent>) {
     for HitEvent { entity } in ev_hit.iter() {
-        commands.entity(*entity).despawn();
+        commands.entity(*entity).despawn_recursive();
     }
 }
 
@@ -204,9 +232,9 @@ fn asteroid_spawn_system(
 
     let size = rng.gen_range(0..=10);
     let radius = match size {
-        0..=4 => rng.gen_range(asteroid_sizes.big.clone()),
-        5..=8 => rng.gen_range(asteroid_sizes.medium.clone()),
-        9..=10 => rng.gen_range(asteroid_sizes.small.clone()),
+        0..=3 => rng.gen_range(asteroid_sizes.big.clone()),
+        4..=6 => rng.gen_range(asteroid_sizes.medium.clone()),
+        7..=9 => rng.gen_range(asteroid_sizes.small.clone()),
         _ => rng.gen_range(asteroid_sizes.big.clone()),
     };
 
@@ -406,7 +434,7 @@ fn drive_system(mut query: Query<(&mut Velocity, &Transform, &Drive)>) {
             return;
         }
 
-        //what the fuck is this quat shit
+        // what the fuck is this quat shit
         // changed from Vec3::X to -Vec::Y and now this shit works wtf?
         let direction = transform.rotation * -Vec3::Y;
         velocity.x += direction.x * drive.force;
