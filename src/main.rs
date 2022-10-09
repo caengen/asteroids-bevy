@@ -30,9 +30,11 @@ pub const SCREEN: Vec2 = Vec2::from_array([SCREEN_WIDTH, SCREEN_HEIGHT]);
 pub const GAME_WIDTH: f32 = 240.0;
 // pub const PIXELS_PER_METER: f32 = 30.0 / SCALE;
 pub const CANNON_BULLET_RADIUS: f32 = 1.0;
+pub const PARTICLE_RADIUS: f32 = 0.3;
 
 pub const PLAYER_SIZE: f32 = 20.0;
 pub const PLAYER_DAMPING: f32 = 0.998;
+pub const PARTICLE_DAMPING: f32 = 0.9;
 pub const POLY_LINE_WIDTH: f32 = 1.0;
 pub const ASTEROID_LINE_WIDTH: f32 = 3.0;
 
@@ -66,6 +68,7 @@ fn main() {
         })
         .add_event::<AsteroidSpawnEvent>()
         .add_event::<HitEvent>()
+        .add_event::<ExplosionEvent>()
         .add_plugins(DefaultPlugins)
         .add_plugin(ShapePlugin)
         .add_plugin(RandomPlugin)
@@ -102,8 +105,10 @@ fn main() {
                 .after(System::Boundary),
         )
         .add_system(hit_system.after(System::Collision))
+        .add_system(explosion_system.after(System::Collision))
         .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
         .add_system(asteroid_generation_system)
+        .add_system(timed_removal_system.after(System::Movement))
         // .add_system(flick_system)
         // .add_system(player_state_system)
         .run();
@@ -158,26 +163,90 @@ fn setup_system(mut commands: Commands) {
 // TODO
 fn collision_system<A: Component, B: Component>(
     mut ev_hit: EventWriter<HitEvent>,
+    mut ev_explode: EventWriter<ExplosionEvent>,
     colliders: Query<(Entity, &Transform, &Bounding, With<A>)>,
-    victims: Query<(Entity, &Transform, &Bounding, With<B>)>,
+    victims: Query<(Entity, &Transform, &Bounding, With<B>, Option<&Asteroid>)>,
 ) {
     for (_collider, c_trans, c_bound, _) in colliders.iter() {
         let Vec3 { x: x1, y: y1, z: _ } = c_trans.translation;
         let r1 = c_bound.0;
-        for (victim, v_trans, v_bound, _) in victims.iter() {
+        for (victim, v_trans, v_bound, _, asteroid) in victims.iter() {
             let Vec3 { x: x2, y: y2, z: _ } = v_trans.translation;
             let r2 = v_bound.0;
             let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
             if d < r1 + r2 {
-                ev_hit.send(HitEvent { entity: victim })
+                ev_hit.send(HitEvent { entity: victim });
+                if let Some(Asteroid) = asteroid {
+                    ev_explode.send(ExplosionEvent {
+                        pos: v_trans.translation,
+                        radius: v_bound.0,
+                    });
+                }
             }
         }
     }
 }
 
-fn hit_system(mut commands: Commands, mut ev_hit: EventReader<HitEvent>) {
+fn hit_system(mut commands: Commands, mut rng: Local<Random>, mut ev_hit: EventReader<HitEvent>) {
     for HitEvent { entity } in ev_hit.iter() {
         commands.entity(*entity).despawn_recursive();
+    }
+}
+fn explosion_system(
+    mut commands: Commands,
+    mut rng: Local<Random>,
+    mut ev_explode: EventReader<ExplosionEvent>,
+) {
+    for ExplosionEvent { pos, radius } in ev_explode.iter() {
+        let shape = shapes::Circle {
+            radius: PARTICLE_RADIUS,
+            ..Default::default()
+        };
+
+        let particles = rng.gen_range(75..150);
+
+        for i in 1..=particles {
+            let theta = ((i * (360 / particles)) as f32).to_radians();
+            let r = rng.gen_range(0.1..(*radius * 0.8));
+            let particle_pos = vec3(r * f32::sin(theta), r * f32::cos(theta), 1.0);
+            let force = rng.gen_range(30.0..80.0);
+            let vel = vec2(f32::sin(theta) * force, f32::cos(theta) * force);
+            commands
+                .spawn()
+                .insert_bundle(
+                    (GeometryBuilder::build_as(
+                        &shape,
+                        DrawMode::Outlined {
+                            outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH),
+                            fill_mode: FillMode::color(Color::WHITE),
+                        },
+                        Transform {
+                            translation: vec3(pos.x + particle_pos.x, pos.y + particle_pos.y, 1.0),
+                            ..Default::default()
+                        },
+                    )),
+                )
+                .insert(TimedRemoval(Timer::new(
+                    Duration::from_millis(rng.gen_range(500..1000)),
+                    false,
+                )))
+                .insert(Velocity::from(vel))
+                .insert(Damping::from(PLAYER_DAMPING));
+        }
+    }
+}
+
+fn timed_removal_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut TimedRemoval)>,
+) {
+    for (entity, mut removal) in query.iter_mut() {
+        removal.0.tick(time.delta());
+
+        if removal.0.finished() {
+            commands.entity(entity).despawn();
+        }
     }
 }
 
@@ -209,6 +278,10 @@ fn hit_system(mut commands: Commands, mut ev_hit: EventReader<HitEvent>) {
 pub struct HitEvent {
     entity: Entity,
 }
+pub struct ExplosionEvent {
+    pub pos: Vec3,
+    pub radius: f32,
+}
 pub struct AsteroidSpawnEvent {
     pub pos: Vec2,
     pub radius: f32,
@@ -222,8 +295,7 @@ fn asteroid_spawn_system(
     mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
     existing_asteroids: Query<&Asteroid>,
 ) {
-    let len = existing_asteroids.iter().len();
-    if len >= 10 || !rng.gen_bool(1.0 / 3.0) {
+    if !rng.gen_bool(1.0 / 3.0) {
         return;
     }
 
@@ -551,6 +623,9 @@ impl Drive {
         }
     }
 }
+
+#[derive(Debug, Component)]
+struct TimedRemoval(Timer);
 
 #[derive(Debug, Component)]
 struct Bullet(Timer);
