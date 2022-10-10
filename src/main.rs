@@ -33,8 +33,8 @@ pub const CANNON_BULLET_RADIUS: f32 = 1.0;
 pub const PARTICLE_RADIUS: f32 = 0.3;
 
 pub const PLAYER_SIZE: f32 = 20.0;
-pub const PLAYER_DAMPING: f32 = 0.998;
-pub const PARTICLE_DAMPING: f32 = 0.9;
+pub const PLAYER_DAMPING: f32 = 0.992;
+pub const PARTICLE_DAMPING: f32 = 0.992;
 pub const POLY_LINE_WIDTH: f32 = 1.0;
 pub const ASTEROID_LINE_WIDTH: f32 = 3.0;
 
@@ -187,7 +187,7 @@ fn collision_system<A: Component, B: Component>(
     }
 }
 
-fn hit_system(mut commands: Commands, mut rng: Local<Random>, mut ev_hit: EventReader<HitEvent>) {
+fn hit_system(mut commands: Commands, mut ev_hit: EventReader<HitEvent>) {
     for HitEvent { entity } in ev_hit.iter() {
         commands.entity(*entity).despawn_recursive();
     }
@@ -207,9 +207,9 @@ fn explosion_system(
 
         for i in 1..=particles {
             let theta = ((i * (360 / particles)) as f32).to_radians();
-            let r = rng.gen_range(0.1..(*radius * 0.8));
+            let r = rng.gen_range((*radius * 0.3)..(*radius * 0.9));
             let particle_pos = vec3(r * f32::sin(theta), r * f32::cos(theta), 1.0);
-            let force = rng.gen_range(30.0..80.0);
+            let force = rng.gen_range(20.0..90.0);
             let vel = vec2(f32::sin(theta) * force, f32::cos(theta) * force);
             commands
                 .spawn()
@@ -227,11 +227,11 @@ fn explosion_system(
                     )),
                 )
                 .insert(TimedRemoval(Timer::new(
-                    Duration::from_millis(rng.gen_range(500..1000)),
+                    Duration::from_millis(rng.gen_range(300..1200)),
                     false,
                 )))
                 .insert(Velocity::from(vel))
-                .insert(Damping::from(PLAYER_DAMPING));
+                .insert(Damping::from(PARTICLE_DAMPING));
         }
     }
 }
