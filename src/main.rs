@@ -19,6 +19,7 @@ use bevy_prototype_lyon::{
 use derive_more::From;
 use rand::Rng;
 use random::{Random, RandomPlugin};
+use std::ops::RangeInclusive;
 use std::{default::Default, f32::consts::PI, ops::Range, time::Duration};
 
 mod random;
@@ -41,6 +42,12 @@ pub const ASTEROID_LINE_WIDTH: f32 = 3.0;
 pub const DARK: (f32, f32, f32) = (49.0, 47.0, 40.0);
 pub const LIGHT: (f32, f32, f32) = (218.0, 216.0, 209.0);
 
+pub const ASTEROID_SIZES: (
+    RangeInclusive<f32>,
+    RangeInclusive<f32>,
+    RangeInclusive<f32>,
+) = (60.0..=80.0, 40.0..=50.00, 10.0..=15.0);
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, SystemLabel)]
 enum System {
     Collision,
@@ -61,11 +68,6 @@ fn main() {
         })
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(Msaa { samples: 4 })
-        .insert_resource(AsteroidSizes {
-            big: 60.0..80.0,
-            medium: 40.0..50.0,
-            small: 10.0..15.0,
-        })
         .add_event::<AsteroidSpawnEvent>()
         .add_event::<HitEvent>()
         .add_event::<ExplosionEvent>()
@@ -164,8 +166,10 @@ fn setup_system(mut commands: Commands) {
 fn collision_system<A: Component, B: Component>(
     mut ev_hit: EventWriter<HitEvent>,
     mut ev_explode: EventWriter<ExplosionEvent>,
+    mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
     colliders: Query<(Entity, &Transform, &Bounding, With<A>)>,
     victims: Query<(Entity, &Transform, &Bounding, With<B>, Option<&Asteroid>)>,
+    mut rng: Local<Random>,
 ) {
     for (_collider, c_trans, c_bound, _) in colliders.iter() {
         let Vec3 { x: x1, y: y1, z: _ } = c_trans.translation;
@@ -177,10 +181,29 @@ fn collision_system<A: Component, B: Component>(
             if d < r1 + r2 {
                 ev_hit.send(HitEvent { entity: victim });
                 if let Some(Asteroid) = asteroid {
-                    ev_explode.send(ExplosionEvent {
-                        pos: v_trans.translation,
-                        radius: v_bound.0,
-                    });
+                    match v_bound.0 as usize {
+                        // /(60.0..=80.0, 40.0..=50.00, 10.0..=15.0);
+                        60..=80 => {
+                            ev_asteroid_spawn.send(AsteroidSpawnEvent {
+                                amount: 2,
+                                pos: vec2(v_trans.translation.x, v_trans.translation.y),
+                                radius: rng.gen_range(ASTEROID_SIZES.1),
+                            });
+                        }
+                        40..=50 => {
+                            ev_asteroid_spawn.send(AsteroidSpawnEvent {
+                                amount: 3,
+                                pos: vec2(v_trans.translation.x, v_trans.translation.y),
+                                radius: rng.gen_range(ASTEROID_SIZES.2),
+                            });
+                        }
+                        _ => {
+                            ev_explode.send(ExplosionEvent {
+                                pos: v_trans.translation,
+                                radius: v_bound.0,
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -203,14 +226,14 @@ fn explosion_system(
             ..Default::default()
         };
 
-        let particles = rng.gen_range(75..150);
+        let particles = rng.gen_range(100..200);
 
         for i in 1..=particles {
-            let theta = ((i * (360 / particles)) as f32).to_radians();
-            let r = rng.gen_range((*radius * 0.3)..(*radius * 0.9));
-            let particle_pos = vec3(r * f32::sin(theta), r * f32::cos(theta), 1.0);
+            let angle = ((i * (360 / particles)) as f32).to_radians();
+            let r = rng.gen_range((*radius * 0.1)..(*radius * 0.9));
+            let particle_pos = vec3(r * f32::sin(angle), r * f32::cos(angle), 1.0);
             let force = rng.gen_range(20.0..90.0);
-            let vel = vec2(f32::sin(theta) * force, f32::cos(theta) * force);
+            let vel = vec2(f32::sin(angle) * force, f32::cos(angle) * force);
             commands
                 .spawn()
                 .insert_bundle(
@@ -227,7 +250,7 @@ fn explosion_system(
                     )),
                 )
                 .insert(TimedRemoval(Timer::new(
-                    Duration::from_millis(rng.gen_range(300..1200)),
+                    Duration::from_millis(rng.gen_range(300..1500)),
                     false,
                 )))
                 .insert(Velocity::from(vel))
@@ -290,7 +313,6 @@ pub struct AsteroidSpawnEvent {
 
 fn asteroid_spawn_system(
     window: Res<WindowDescriptor>,
-    asteroid_sizes: Res<AsteroidSizes>,
     mut rng: Local<Random>,
     mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
     existing_asteroids: Query<&Asteroid>,
@@ -304,10 +326,10 @@ fn asteroid_spawn_system(
 
     let size = rng.gen_range(0..=10);
     let radius = match size {
-        0..=3 => rng.gen_range(asteroid_sizes.big.clone()),
-        4..=6 => rng.gen_range(asteroid_sizes.medium.clone()),
-        7..=9 => rng.gen_range(asteroid_sizes.small.clone()),
-        _ => rng.gen_range(asteroid_sizes.big.clone()),
+        0..=3 => rng.gen_range(ASTEROID_SIZES.0),
+        4..=6 => rng.gen_range(ASTEROID_SIZES.1),
+        7..=9 => rng.gen_range(ASTEROID_SIZES.2),
+        _ => rng.gen_range(ASTEROID_SIZES.0),
     };
 
     let side = rng.gen_range(0..=3);
@@ -338,18 +360,27 @@ fn asteroid_generation_system(
     } in ev_asteroid_spawn.iter()
     {
         for _i in 0..*amount {
-            let a = rng.gen_range(7..12);
+            let pos = if *amount > 0 {
+                let angle = (rng.gen_range(0..360) as f32).to_radians();
+                vec2(pos.x + *radius * angle.sin(), pos.y + *radius * angle.cos())
+            } else {
+                *pos
+            };
+
+            let edges = rng.gen_range(7..12);
 
             let mut points = Vec::new();
-            let angle_inc = 360.0 / a as f32;
-            let mut bounding = 0.0;
-            for i in 1..=a {
-                let r = rng.gen_range((radius * 0.5)..*radius);
-                if r > bounding {
-                    bounding = r;
-                }
-                let rot = (angle_inc * i as f32).to_radians();
-                points.push(vec2(r * rot.sin(), r * rot.cos()));
+            let angle_inc = 360.0 / edges as f32;
+            let bounding = *radius;
+            for i in 1..=edges {
+                let r = match *radius as usize {
+                    60..=80 => rng.gen_range(ASTEROID_SIZES.0),
+                    40..=50 => rng.gen_range(ASTEROID_SIZES.1),
+                    _ => rng.gen_range(ASTEROID_SIZES.2),
+                };
+
+                let angle = (angle_inc * i as f32).to_radians();
+                points.push(vec2(r * angle.sin(), r * angle.cos()));
             }
 
             let shape = shapes::Polygon {
@@ -357,12 +388,30 @@ fn asteroid_generation_system(
                 closed: true,
             };
 
-            let start = vec3(pos.x, pos.y, 1.0);
-            let dest = vec3(1.0, 1.0, 1.0);
-            let angle = start.angle_between(dest);
-            let direction = Quat::from_rotation_z(angle) * -Vec3::Y; //TODO: find out why this works
-            let force = rng.gen_range(10.0..30.00);
-            let vel = vec2(force * direction.x, force * direction.y);
+            let center = vec3(pos.x, pos.y, 1.0);
+            let vel = match *radius as usize {
+                60..=80 => {
+                    let dest = vec3(1.0, 1.0, 1.0);
+                    let angle = center.angle_between(dest);
+                    let direction = Quat::from_rotation_z(angle) * -Vec3::Y; //TODO: find out why this works
+                    let force = rng.gen_range(10.0..50.00);
+                    vec2(force * direction.x, force * direction.y)
+                }
+                40..=50 => {
+                    let direction =
+                        Quat::from_rotation_z((rng.gen_range(0..360) as f32).to_radians())
+                            * -Vec3::Y; //TODO: find out why this works
+                    let force = rng.gen_range(20.0..60.00);
+                    vec2(force * direction.x, force * direction.y)
+                }
+                _ => {
+                    let direction =
+                        Quat::from_rotation_z((rng.gen_range(0..360) as f32).to_radians())
+                            * -Vec3::Y; //TODO: find out why this works
+                    let force = rng.gen_range(30.0..70.00);
+                    vec2(force * direction.x, force * direction.y)
+                }
+            };
 
             let _asteroid = commands
                 .spawn()
@@ -373,7 +422,7 @@ fn asteroid_generation_system(
                             outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * 1.5),
                             fill_mode: FillMode::color(Color::NONE),
                         },
-                        Transform::default().with_translation(start),
+                        Transform::default().with_translation(center),
                     )),
                 )
                 .insert(Bounding::from(bounding))
