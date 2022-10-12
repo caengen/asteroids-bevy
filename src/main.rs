@@ -138,7 +138,8 @@ fn player_state_system(
                         .insert(SteeringControl::from(Angle::degrees(180.0)))
                         .insert(Drive::new(3.0))
                         .insert(Cannon::from(400.0))
-                        .insert(Velocity::default());
+                        .insert(Velocity::default())
+                        .insert(AngularVelocity::default());
                     ship.state = ShipState::Alive;
                     visibility.is_visible = true;
                 }
@@ -168,7 +169,8 @@ fn player_state_system(
                         .remove::<SteeringControl>()
                         .remove::<Drive>()
                         .remove::<Cannon>()
-                        .remove::<Velocity>();
+                        .remove::<Velocity>()
+                        .remove::<AngularVelocity>();
                     *ship = Ship {
                         state: ShipState::Dead,
                         timer: Timer::from_seconds(2.0, false),
@@ -202,7 +204,7 @@ fn setup_system(mut commands: Commands) {
             )),
         )
         .insert(Ship {
-            state: ShipState::Spawning,
+            state: ShipState::Alive,
             timer: Timer::new(Duration::from_secs(2), false),
         })
         .insert(Flick {
