@@ -17,6 +17,7 @@ use bevy_prototype_lyon::{
     shapes::{Circle, Polygon},
 };
 use derive_more::From;
+use rand::distributions::uniform::SampleRange;
 use rand::Rng;
 use random::{Random, RandomPlugin};
 use std::ops::RangeInclusive;
@@ -46,7 +47,7 @@ pub const ASTEROID_SIZES: (
     RangeInclusive<f32>,
     RangeInclusive<f32>,
     RangeInclusive<f32>,
-) = (60.0..=80.0, 40.0..=50.00, 10.0..=15.0);
+) = (60.0..=80.0, 30.0..=50.00, 10.0..=20.0);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, SystemLabel)]
 enum System {
@@ -70,6 +71,7 @@ fn main() {
         .insert_resource(Msaa { samples: 4 })
         .add_event::<AsteroidSpawnEvent>()
         .add_event::<HitEvent>()
+        .add_event::<PlayerDeathEvent>()
         .add_event::<ExplosionEvent>()
         .add_plugins(DefaultPlugins)
         .add_plugin(ShapePlugin)
@@ -104,6 +106,7 @@ fn main() {
                 .label(System::Collision)
                 .with_system(collision_system::<Bullet, Asteroid>)
                 .with_system(collision_system::<Asteroid, Bullet>)
+                .with_system(collision_system::<Asteroid, Ship>)
                 .after(System::Boundary),
         )
         .add_system(hit_system.after(System::Collision))
@@ -111,17 +114,71 @@ fn main() {
         .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
         .add_system(asteroid_generation_system)
         .add_system(timed_removal_system.after(System::Movement))
-        // .add_system(flick_system)
-        // .add_system(player_state_system)
+        .add_system(player_state_system)
+        .add_system(flick_system)
         .run();
 }
 
-// fn asteroid_setup_system(mut commands: Commands) {
-//     let amount = 10;
-//     let angle_increment = 360.0 / amount as f32;
-
-//     for i in 0..amount {}
-// }
+fn player_state_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut Ship, &mut Transform, &mut Visibility)>,
+    mut ev_death: EventReader<PlayerDeathEvent>,
+) {
+    let delta = time.delta();
+    for (entity, mut ship, mut transform, mut visibility) in query.iter_mut() {
+        match ship.state {
+            ShipState::Spawning => {
+                ship.timer.tick(delta);
+                if ship.timer.just_finished() {
+                    commands
+                        .entity(entity)
+                        .remove::<Flick>()
+                        .insert(Bounding::from(PLAYER_SIZE / 2.0))
+                        .insert(SteeringControl::from(Angle::degrees(180.0)))
+                        .insert(Drive::new(3.0))
+                        .insert(Cannon::from(400.0))
+                        .insert(Velocity::default());
+                    ship.state = ShipState::Alive;
+                    visibility.is_visible = true;
+                }
+            }
+            ShipState::Dead => {
+                ship.timer.tick(delta);
+                if ship.timer.just_finished() {
+                    transform.rotation = Quat::from_rotation_z(180.0_f32.to_radians());
+                    transform.translation.x = 0.0;
+                    transform.translation.y = 0.0;
+                    commands.entity(entity).insert(Flick {
+                        duration: Timer::new(Duration::from_secs(2), false),
+                        switch_timer: Timer::new(Duration::from_millis(200), true),
+                    });
+                    *ship = Ship {
+                        state: ShipState::Spawning,
+                        timer: Timer::from_seconds(1.0, false),
+                    };
+                    visibility.is_visible = true;
+                }
+            }
+            ShipState::Alive => {
+                for _PlayerDeathEvent in ev_death.iter() {
+                    commands
+                        .entity(entity)
+                        .remove::<Bounding>()
+                        .remove::<SteeringControl>()
+                        .remove::<Drive>()
+                        .remove::<Cannon>()
+                        .remove::<Velocity>();
+                    *ship = Ship {
+                        state: ShipState::Dead,
+                        timer: Timer::from_seconds(2.0, false),
+                    };
+                    visibility.is_visible = false;
+                }
+            }
+        }
+    }
+}
 
 fn setup_system(mut commands: Commands) {
     commands.spawn_bundle(Camera2dBundle::default());
@@ -145,21 +202,17 @@ fn setup_system(mut commands: Commands) {
             )),
         )
         .insert(Ship {
-            state: ShipState::Spawning(Timer::new(Duration::from_secs(2), false)),
+            state: ShipState::Spawning,
+            timer: Timer::new(Duration::from_secs(2), false),
         })
-        .insert(Bounding::from(PLAYER_SIZE / 2.0))
+        .insert(Flick {
+            duration: Timer::new(Duration::from_secs(2), false),
+            switch_timer: Timer::new(Duration::from_millis(200), true),
+        })
         .insert(BoundaryWrap)
         .insert(Velocity::default())
         .insert(AngularVelocity::default())
-        .insert(Damping::from(PLAYER_DAMPING))
-        .insert(SteeringControl::from(Angle::degrees(180.0)))
-        .insert(Drive::new(3.0))
-        .insert(Visibility::default())
-        .insert(Cannon::from(400.0));
-    // .insert(Flick {
-    //     duration: Timer::new(Duration::from_millis(2250), false),
-    //     switch_timer: Timer::new(Duration::from_millis(150), true),
-    // });
+        .insert(Damping::from(PLAYER_DAMPING));
 }
 
 // TODO
@@ -167,41 +220,61 @@ fn collision_system<A: Component, B: Component>(
     mut ev_hit: EventWriter<HitEvent>,
     mut ev_explode: EventWriter<ExplosionEvent>,
     mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
+    mut ev_player_death: EventWriter<PlayerDeathEvent>,
     colliders: Query<(Entity, &Transform, &Bounding, With<A>)>,
-    victims: Query<(Entity, &Transform, &Bounding, With<B>, Option<&Asteroid>)>,
+    mut victims: Query<(
+        Entity,
+        &Transform,
+        &Bounding,
+        With<B>,
+        Option<&Asteroid>,
+        Option<&mut Ship>,
+    )>,
     mut rng: Local<Random>,
 ) {
-    for (_collider, c_trans, c_bound, _) in colliders.iter() {
-        let Vec3 { x: x1, y: y1, z: _ } = c_trans.translation;
-        let r1 = c_bound.0;
-        for (victim, v_trans, v_bound, _, asteroid) in victims.iter() {
-            let Vec3 { x: x2, y: y2, z: _ } = v_trans.translation;
-            let r2 = v_bound.0;
+    for (_collider, at, ab, _) in colliders.iter() {
+        let Vec3 { x: x1, y: y1, z: _ } = at.translation;
+        let r1 = ab.0;
+        for (victim, bt, bb, _, asteroid, ship) in victims.iter_mut() {
+            let Vec3 { x: x2, y: y2, z: _ } = bt.translation;
+            let r2 = bb.0;
             let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
             if d < r1 + r2 {
-                ev_hit.send(HitEvent { entity: victim });
-                if let Some(Asteroid) = asteroid {
-                    match v_bound.0 as usize {
-                        // /(60.0..=80.0, 40.0..=50.00, 10.0..=15.0);
-                        60..=80 => {
-                            ev_asteroid_spawn.send(AsteroidSpawnEvent {
-                                amount: 2,
-                                pos: vec2(v_trans.translation.x, v_trans.translation.y),
-                                radius: rng.gen_range(ASTEROID_SIZES.1),
-                            });
-                        }
-                        40..=50 => {
-                            ev_asteroid_spawn.send(AsteroidSpawnEvent {
-                                amount: 3,
-                                pos: vec2(v_trans.translation.x, v_trans.translation.y),
-                                radius: rng.gen_range(ASTEROID_SIZES.2),
-                            });
-                        }
-                        _ => {
-                            ev_explode.send(ExplosionEvent {
-                                pos: v_trans.translation,
-                                radius: v_bound.0,
-                            });
+                if let Some(mut ship) = ship {
+                    if matches!(ship.state, ShipState::Alive) {
+                        ev_explode.send(ExplosionEvent {
+                            pos: bt.translation,
+                            radius: r2,
+                            particles: 150..200,
+                        });
+                        ev_player_death.send(PlayerDeathEvent {});
+                    }
+                } else {
+                    ev_hit.send(HitEvent { entity: victim });
+                    if let Some(Asteroid) = asteroid {
+                        match bb.0 as usize {
+                            // /(60.0..=80.0, 40.0..=50.00, 10.0..=15.0);
+                            60..=80 => {
+                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
+                                    amount: 2,
+                                    pos: vec2(bt.translation.x, bt.translation.y),
+                                    radius: rng.gen_range(ASTEROID_SIZES.1),
+                                });
+                            }
+                            30..=50 => {
+                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
+                                    amount: 3,
+                                    pos: vec2(bt.translation.x, bt.translation.y),
+                                    radius: rng.gen_range(ASTEROID_SIZES.2),
+                                });
+                            }
+                            _ => {
+                                ev_explode.send(ExplosionEvent {
+                                    pos: bt.translation,
+                                    radius: r2,
+                                    particles: 50..100,
+                                });
+                            }
                         }
                     }
                 }
@@ -220,13 +293,18 @@ fn explosion_system(
     mut rng: Local<Random>,
     mut ev_explode: EventReader<ExplosionEvent>,
 ) {
-    for ExplosionEvent { pos, radius } in ev_explode.iter() {
+    for ExplosionEvent {
+        pos,
+        radius,
+        particles,
+    } in ev_explode.iter()
+    {
         let shape = shapes::Circle {
             radius: PARTICLE_RADIUS,
             ..Default::default()
         };
 
-        let particles = rng.gen_range(100..200);
+        let particles = rng.gen_range(particles.start..particles.end);
 
         for i in 1..=particles {
             let angle = ((i * (360 / particles)) as f32).to_radians();
@@ -273,37 +351,13 @@ fn timed_removal_system(
     }
 }
 
-// fn player_state_system(`````````````
-//     mut commands: Commands,
-//     time: Res<Time>,
-//     mut query: Query<(Entity, &mut Ship, &mut Transform)>,
-// ) {
-//     for (entity, mut ship, mut transform) in query.iter_mut() {
-//         match ship.state {
-//             ShipState::Spawning(ref mut timer) => {
-//                 if timer.finished() {
-//                     // ship.state = ShipState::Alive;
-//                     commands
-//                         .entity(entity)
-//                         .insert(SteeringControl::from(Angle::degrees(180.0)))
-//                         .insert(Drive::new(1.5))
-//                         .insert(Cannon::from(400.0))
-//                         .log_components();
-//                 }
-//                 timer.tick(time.delta());
-//             }
-//             ShipState::Dead(timer) => {}
-//             ShipState::Alive => {}
-//         }
-//     }
-// }
-
 pub struct HitEvent {
     entity: Entity,
 }
 pub struct ExplosionEvent {
     pub pos: Vec3,
     pub radius: f32,
+    pub particles: Range<i32>,
 }
 pub struct AsteroidSpawnEvent {
     pub pos: Vec2,
@@ -311,13 +365,14 @@ pub struct AsteroidSpawnEvent {
     pub amount: i32,
 }
 
+pub struct PlayerDeathEvent {}
+
 fn asteroid_spawn_system(
     window: Res<WindowDescriptor>,
     mut rng: Local<Random>,
     mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
-    existing_asteroids: Query<&Asteroid>,
 ) {
-    if !rng.gen_bool(1.0 / 3.0) {
+    if !rng.gen_bool(1.0 / 4.0) {
         return;
     }
 
@@ -375,7 +430,7 @@ fn asteroid_generation_system(
             for i in 1..=edges {
                 let r = match *radius as usize {
                     60..=80 => rng.gen_range(ASTEROID_SIZES.0),
-                    40..=50 => rng.gen_range(ASTEROID_SIZES.1),
+                    30..=50 => rng.gen_range(ASTEROID_SIZES.1),
                     _ => rng.gen_range(ASTEROID_SIZES.2),
                 };
 
@@ -426,9 +481,9 @@ fn asteroid_generation_system(
                     )),
                 )
                 .insert(Bounding::from(bounding))
-                .insert(BoundaryRemoval(false))
+                .insert(BoundaryWrap)
                 .insert(Velocity::from(vel))
-                .insert(AngularVelocity::from(0.05))
+                .insert(AngularVelocity::from(rng.gen_range(0.5..2.0)))
                 .insert(Asteroid);
         }
     }
@@ -654,6 +709,7 @@ struct Flick {
 #[derive(Debug, Component, Default)]
 struct Ship {
     state: ShipState,
+    timer: Timer,
 }
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
@@ -727,11 +783,11 @@ struct SteeringControl(Angle);
 //     }
 // }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum ShipState {
     Alive,
-    Dead(Timer),
-    Spawning(Timer),
+    Dead,
+    Spawning,
 }
 
 impl Default for ShipState {
