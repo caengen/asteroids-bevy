@@ -204,8 +204,8 @@ fn setup_system(mut commands: Commands) {
             )),
         )
         .insert(Ship {
-            state: ShipState::Alive,
-            timer: Timer::new(Duration::from_secs(2), false),
+            state: ShipState::Spawning,
+            timer: Timer::new(Duration::from_millis(1), false),
         })
         .insert(Flick {
             duration: Timer::new(Duration::from_secs(2), false),
@@ -223,21 +223,22 @@ fn collision_system<A: Component, B: Component>(
     mut ev_explode: EventWriter<ExplosionEvent>,
     mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
     mut ev_player_death: EventWriter<PlayerDeathEvent>,
-    colliders: Query<(Entity, &Transform, &Bounding, With<A>)>,
+    colliders: Query<(Entity, &Transform, &Bounding, &Velocity, With<A>)>,
     mut victims: Query<(
         Entity,
         &Transform,
         &Bounding,
+        &Velocity,
         With<B>,
         Option<&Asteroid>,
         Option<&mut Ship>,
     )>,
     mut rng: Local<Random>,
 ) {
-    for (_collider, at, ab, _) in colliders.iter() {
+    for (_collider, at, ab, avel, _) in colliders.iter() {
         let Vec3 { x: x1, y: y1, z: _ } = at.translation;
         let r1 = ab.0;
-        for (victim, bt, bb, _, asteroid, ship) in victims.iter_mut() {
+        for (victim, bt, bb, bvel, _, asteroid, ship) in victims.iter_mut() {
             let Vec3 { x: x2, y: y2, z: _ } = bt.translation;
             let r2 = bb.0;
             let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
@@ -248,6 +249,7 @@ fn collision_system<A: Component, B: Component>(
                             pos: bt.translation,
                             radius: r2,
                             particles: 150..200,
+                            impact_vel: vec2(avel.x, avel.y),
                         });
                         ev_player_death.send(PlayerDeathEvent {});
                     }
@@ -271,10 +273,15 @@ fn collision_system<A: Component, B: Component>(
                                 });
                             }
                             _ => {
+                                // hack. need to add weight to impacters
                                 ev_explode.send(ExplosionEvent {
                                     pos: bt.translation,
                                     radius: r2,
                                     particles: 50..100,
+                                    impact_vel: vec2(
+                                        bvel.x + (avel.x / 3.0),
+                                        bvel.y + (avel.y / 3.0),
+                                    ),
                                 });
                             }
                         }
@@ -299,6 +306,7 @@ fn explosion_system(
         pos,
         radius,
         particles,
+        impact_vel,
     } in ev_explode.iter()
     {
         let shape = shapes::Circle {
@@ -313,7 +321,10 @@ fn explosion_system(
             let r = rng.gen_range((*radius * 0.1)..(*radius * 0.9));
             let particle_pos = vec3(r * f32::sin(angle), r * f32::cos(angle), 1.0);
             let force = rng.gen_range(20.0..90.0);
-            let vel = vec2(f32::sin(angle) * force, f32::cos(angle) * force);
+            let vel = vec2(
+                impact_vel.x + f32::sin(angle) * force,
+                impact_vel.y + f32::cos(angle) * force,
+            );
             commands
                 .spawn()
                 .insert_bundle(
@@ -356,10 +367,12 @@ fn timed_removal_system(
 pub struct HitEvent {
     entity: Entity,
 }
+
 pub struct ExplosionEvent {
     pub pos: Vec3,
     pub radius: f32,
     pub particles: Range<i32>,
+    pub impact_vel: Vec2,
 }
 pub struct AsteroidSpawnEvent {
     pub pos: Vec2,
