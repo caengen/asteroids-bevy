@@ -9,20 +9,22 @@ use bevy::{
 use bevy_inspector_egui::WorldInspectorPlugin;
 use bevy_inspector_egui::{Inspectable, InspectorPlugin};
 use bevy_prototype_lyon::{
-    entity::ShapeBundle,
     prelude::{
         tess::{geom::Rotation, math::Angle},
         *,
     },
     shapes::{Circle, Polygon},
 };
+use collision::*;
 use derive_more::From;
-use rand::distributions::uniform::SampleRange;
+use physics::*;
 use rand::Rng;
 use random::{Random, RandomPlugin};
 use std::ops::RangeInclusive;
 use std::{default::Default, f32::consts::PI, ops::Range, time::Duration};
 
+mod collision;
+mod physics;
 mod random;
 
 const SCREEN_HEIGHT: f32 = 640.0;
@@ -215,81 +217,6 @@ fn setup_system(mut commands: Commands) {
         .insert(Velocity::default())
         .insert(AngularVelocity::default())
         .insert(Damping::from(PLAYER_DAMPING));
-}
-
-// TODO
-fn collision_system<A: Component, B: Component>(
-    mut ev_hit: EventWriter<HitEvent>,
-    mut ev_explode: EventWriter<ExplosionEvent>,
-    mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
-    mut ev_player_death: EventWriter<PlayerDeathEvent>,
-    colliders: Query<(Entity, &Transform, &Bounding, &Velocity, With<A>)>,
-    mut victims: Query<(
-        Entity,
-        &Transform,
-        &Bounding,
-        &Velocity,
-        With<B>,
-        Option<&Asteroid>,
-        Option<&mut Ship>,
-    )>,
-    mut rng: Local<Random>,
-) {
-    for (_collider, at, ab, avel, _) in colliders.iter() {
-        let Vec3 { x: x1, y: y1, z: _ } = at.translation;
-        let r1 = ab.0;
-        for (victim, bt, bb, bvel, _, asteroid, ship) in victims.iter_mut() {
-            let Vec3 { x: x2, y: y2, z: _ } = bt.translation;
-            let r2 = bb.0;
-            let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
-            if d < r1 + r2 {
-                if let Some(mut ship) = ship {
-                    if matches!(ship.state, ShipState::Alive) {
-                        ev_explode.send(ExplosionEvent {
-                            pos: bt.translation,
-                            radius: r2,
-                            particles: 150..200,
-                            impact_vel: vec2(avel.x, avel.y),
-                        });
-                        ev_player_death.send(PlayerDeathEvent {});
-                    }
-                } else {
-                    ev_hit.send(HitEvent { entity: victim });
-                    if let Some(Asteroid) = asteroid {
-                        match bb.0 as usize {
-                            // /(60.0..=80.0, 40.0..=50.00, 10.0..=15.0);
-                            60..=80 => {
-                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
-                                    amount: 2,
-                                    pos: vec2(bt.translation.x, bt.translation.y),
-                                    radius: rng.gen_range(ASTEROID_SIZES.1),
-                                });
-                            }
-                            30..=50 => {
-                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
-                                    amount: 3,
-                                    pos: vec2(bt.translation.x, bt.translation.y),
-                                    radius: rng.gen_range(ASTEROID_SIZES.2),
-                                });
-                            }
-                            _ => {
-                                // hack. need to add weight to impacters
-                                ev_explode.send(ExplosionEvent {
-                                    pos: bt.translation,
-                                    radius: r2,
-                                    particles: 50..100,
-                                    impact_vel: vec2(
-                                        bvel.x + (avel.x / 3.0),
-                                        bvel.y + (avel.y / 3.0),
-                                    ),
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 fn hit_system(mut commands: Commands, mut ev_hit: EventReader<HitEvent>) {
@@ -654,21 +581,6 @@ fn steering_control_system(
     }
 }
 
-fn movement_system(
-    time: Res<Time>,
-    mut query: Query<(&mut Transform, Option<&AngularVelocity>, Option<&Velocity>)>,
-) {
-    for (mut transform, angular_velocity, velocity) in query.iter_mut() {
-        if let Some(AngularVelocity(vel)) = angular_velocity {
-            transform.rotate(Quat::from_rotation_z(vel * time.delta_seconds()))
-        }
-        if let Some(Velocity(vel)) = velocity {
-            transform.translation.x += vel.x * time.delta_seconds();
-            transform.translation.y += vel.y * time.delta_seconds();
-        }
-    }
-}
-
 pub fn ship_points() -> Vec<Vec2> {
     let rot = 0.0_f32.to_radians();
     let h = PLAYER_SIZE; // ship height
@@ -714,24 +626,24 @@ fn flick_system(
 }
 
 #[derive(Debug, Component)]
-struct Asteroid;
+pub struct Asteroid;
 #[derive(Debug, Component, Default, From)]
-struct Flick {
-    switch_timer: Timer,
-    duration: Timer,
+pub struct Flick {
+    pub switch_timer: Timer,
+    pub duration: Timer,
 }
 
 #[derive(Debug, Component, Default)]
-struct Ship {
-    state: ShipState,
-    timer: Timer,
+pub struct Ship {
+    pub state: ShipState,
+    pub timer: Timer,
 }
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
-struct Cannon(f32);
+pub struct Cannon(pub f32);
 
 #[derive(Debug, Component)]
-struct Drive {
+pub struct Drive {
     pub on: bool,
     pub force: f32,
 }
@@ -745,38 +657,31 @@ impl Drive {
 }
 
 #[derive(Debug, Component)]
-struct TimedRemoval(Timer);
+pub struct TimedRemoval(pub Timer);
 
 #[derive(Debug, Component)]
-struct Bullet(Timer);
+pub struct Bullet(pub Timer);
 
 #[derive(Debug, Component)]
-struct AsteroidSizes {
-    big: Range<f32>,
-    medium: Range<f32>,
-    small: Range<f32>,
+pub struct AsteroidSizes {
+    pub big: Range<f32>,
+    pub medium: Range<f32>,
+    pub small: Range<f32>,
 }
-#[derive(Debug, Component, Default, Deref, DerefMut, From)]
-struct Bounding(f32);
+
 #[derive(Debug, Component)]
-struct BoundaryWrap;
+pub struct BoundaryWrap;
 #[derive(Debug, Component, Deref, DerefMut)]
-struct BoundaryRemoval(bool);
-
-#[derive(Debug, Component, Default, Deref, DerefMut, From)]
-struct Velocity(Vec2);
-
-#[derive(Debug, Component, Default, Deref, DerefMut, From)]
-struct AngularVelocity(f32);
+pub struct BoundaryRemoval(pub bool);
 
 #[derive(Debug, Component)]
-struct SpeedLimit(f32);
+pub struct SpeedLimit(f32);
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
-struct Damping(f32);
+pub struct Damping(f32);
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
-struct SteeringControl(Angle);
+pub struct SteeringControl(Angle);
 
 // impl Ship {
 //     fn alive() -> Self {
@@ -799,7 +704,7 @@ struct SteeringControl(Angle);
 // }
 
 #[derive(Debug, Clone)]
-enum ShipState {
+pub enum ShipState {
     Alive,
     Dead,
     Spawning,
