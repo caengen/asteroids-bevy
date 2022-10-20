@@ -8,6 +8,12 @@ pub struct Velocity(pub Vec2);
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 pub struct AngularVelocity(pub f32);
 
+#[derive(Debug, Component, Default, Deref, DerefMut, From)]
+pub struct Damping(pub f32);
+
+#[derive(Debug, Component)]
+pub struct SpeedLimit(pub f32);
+
 pub fn movement_system(
     time: Res<Time>,
     mut query: Query<(&mut Transform, Option<&AngularVelocity>, Option<&Velocity>)>,
@@ -20,5 +26,11 @@ pub fn movement_system(
             transform.translation.x += vel.x * time.delta_seconds();
             transform.translation.y += vel.y * time.delta_seconds();
         }
+    }
+}
+
+pub fn damping_system(mut query: Query<(&mut Velocity, &Damping)>) {
+    for (mut velocity, damping) in query.iter_mut() {
+        velocity.0 *= damping.0;
     }
 }

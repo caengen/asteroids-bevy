@@ -111,6 +111,7 @@ fn main() {
                 .with_system(collision_system::<Asteroid, Ship>)
                 .after(System::Boundary),
         )
+        .add_system(self_collision_system::<Asteroid>.before(System::Movement))
         .add_system(hit_system.after(System::Collision))
         .add_system(explosion_system.after(System::Collision))
         .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
@@ -190,8 +191,8 @@ fn setup_system(mut commands: Commands) {
         points: ship_points(),
         closed: false,
     };
-    let mut player = commands.spawn();
-    player
+    let mut player = commands
+        .spawn()
         .insert_bundle(
             (GeometryBuilder::build_as(
                 &shape,
@@ -356,10 +357,13 @@ fn asteroid_generation_system(
         radius,
     } in ev_asteroid_spawn.iter()
     {
-        for _i in 0..*amount {
+        for i in 0..*amount {
             let pos = if *amount > 0 {
-                let angle = (rng.gen_range(0..360) as f32).to_radians();
-                vec2(pos.x + *radius * angle.sin(), pos.y + *radius * angle.cos())
+                let angle = ((360 / *amount * i) as f32).to_radians();
+                vec2(
+                    pos.x + *radius * 1.25 * angle.sin(),
+                    pos.y + *radius * 1.25 * angle.cos(),
+                )
             } else {
                 *pos
             };
@@ -368,18 +372,25 @@ fn asteroid_generation_system(
 
             let mut points = Vec::new();
             let angle_inc = 360.0 / edges as f32;
-            let bounding = *radius;
+
             for i in 1..=edges {
                 let r = match *radius as usize {
-                    60..=80 => rng.gen_range(ASTEROID_SIZES.0),
-                    30..=50 => rng.gen_range(ASTEROID_SIZES.1),
-                    _ => rng.gen_range(ASTEROID_SIZES.2),
-                };
+                    60..=80 => rng.gen_range(60..=(*radius as i32)),
+                    30..=50 => rng.gen_range(30..=(*radius as i32)),
+                    _ => rng.gen_range(10..=(*radius as i32)),
+                } as f32;
 
                 let angle = (angle_inc * i as f32).to_radians();
                 points.push(vec2(r * angle.sin(), r * angle.cos()));
             }
-
+            let p_len = points.len();
+            let average = points
+                .clone()
+                .iter()
+                .map(|p| ((p.x).powi(2) + (p.y).powi(2)).sqrt())
+                .sum::<f32>()
+                / p_len as f32;
+            let bounding = average;
             let shape = shapes::Polygon {
                 points,
                 closed: true,
@@ -410,7 +421,24 @@ fn asteroid_generation_system(
                 }
             };
 
-            let _asteroid = commands
+            let d_circle = shapes::Circle {
+                radius: average,
+                ..Default::default()
+            };
+            let debug_bound = commands
+                .spawn()
+                .insert_bundle(
+                    (GeometryBuilder::build_as(
+                        &d_circle,
+                        DrawMode::Outlined {
+                            outline_mode: StrokeMode::new(Color::RED, POLY_LINE_WIDTH * 1.5),
+                            fill_mode: FillMode::color(Color::NONE),
+                        },
+                        Transform::default(),
+                    )),
+                )
+                .id();
+            let mut asteroid = commands
                 .spawn()
                 .insert_bundle(
                     (GeometryBuilder::build_as(
@@ -423,10 +451,11 @@ fn asteroid_generation_system(
                     )),
                 )
                 .insert(Bounding::from(bounding))
-                .insert(BoundaryWrap)
+                .insert(BoundaryRemoval)
                 .insert(Velocity::from(vel))
                 .insert(AngularVelocity::from(rng.gen_range(0.5..2.0)))
-                .insert(Asteroid);
+                .insert(Asteroid)
+                .insert_children(0, &[debug_bound]);
         }
     }
 }
@@ -446,18 +475,14 @@ pub fn polygon(origo: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
 fn boundary_removal_system(
     mut commands: Commands,
     window: Res<WindowDescriptor>,
-    mut query: Query<(Entity, &Transform, &Bounding, &mut BoundaryRemoval)>,
+    mut query: Query<(Entity, &Transform, &Bounding, With<BoundaryRemoval>)>,
 ) {
     let w = window.width / 2.0;
     let h = window.height / 2.0;
-    for (entity, transform, bounding, mut removal) in query.iter_mut() {
+    for (entity, transform, bounding, _) in query.iter_mut() {
         let Vec3 { x, y, z: _ } = transform.translation;
         let r = bounding.0;
-        if !removal.0 {
-            if x + r > -w && x + r < w && y + r < h && y + r > -h {
-                removal.0 = true;
-            }
-        } else if x < -w - r || x > w + r || y > h + r || y < -h - r {
+        if x < -w - r || x > w + r || y > h + r || y < -h - r {
             commands.entity(entity).despawn();
         }
     }
@@ -517,7 +542,7 @@ fn cannon_control_system(
                     )),
                 )
                 .insert(Bounding::from(CANNON_BULLET_RADIUS))
-                .insert(BoundaryRemoval(true))
+                .insert(BoundaryRemoval)
                 .insert(Velocity::from(vec2(
                     cannon.0 * direction.x,
                     cannon.0 * direction.y,
@@ -557,12 +582,6 @@ fn drive_system(mut query: Query<(&mut Velocity, &Transform, &Drive)>) {
         let direction = transform.rotation * -Vec3::Y;
         velocity.x += direction.x * drive.force;
         velocity.y += direction.y * drive.force;
-    }
-}
-
-fn damping_system(mut query: Query<(&mut Velocity, &Damping)>) {
-    for (mut velocity, damping) in query.iter_mut() {
-        velocity.0 *= damping.0;
     }
 }
 
@@ -663,22 +682,9 @@ pub struct TimedRemoval(pub Timer);
 pub struct Bullet(pub Timer);
 
 #[derive(Debug, Component)]
-pub struct AsteroidSizes {
-    pub big: Range<f32>,
-    pub medium: Range<f32>,
-    pub small: Range<f32>,
-}
-
-#[derive(Debug, Component)]
 pub struct BoundaryWrap;
-#[derive(Debug, Component, Deref, DerefMut)]
-pub struct BoundaryRemoval(pub bool);
-
 #[derive(Debug, Component)]
-pub struct SpeedLimit(f32);
-
-#[derive(Debug, Component, Default, Deref, DerefMut, From)]
-pub struct Damping(f32);
+pub struct BoundaryRemoval;
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 pub struct SteeringControl(Angle);

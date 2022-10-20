@@ -1,7 +1,7 @@
 use super::{
     random::{Random, RandomPlugin},
-    Asteroid, AsteroidSizes, AsteroidSpawnEvent, ExplosionEvent, HitEvent, PlayerDeathEvent, Ship,
-    ShipState, Velocity, ASTEROID_SIZES,
+    Asteroid, AsteroidSpawnEvent, ExplosionEvent, HitEvent, PlayerDeathEvent, Ship, ShipState,
+    Velocity, ASTEROID_SIZES,
 };
 use bevy::ecs::component::Component;
 use bevy::math::vec2;
@@ -12,7 +12,64 @@ use rand::Rng;
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 pub struct Bounding(pub f32);
 
-// TODO
+// Temporarily Radius will act as Mass for momentum calculation
+pub fn self_collision_system<A: Component>(
+    mut colliders: Query<(Entity, &mut Transform, &Bounding, &mut Velocity, With<A>)>,
+    mut rng: Local<Random>,
+) {
+    let mut combinations = colliders.iter_combinations_mut();
+    while let Some([mut a, mut b]) = combinations.fetch_next() {
+        let (_, mut ct, cb, mut cv, _) = a;
+        let Vec3 { x: x1, y: y1, z: _ } = ct.translation;
+        let r1 = cb.0;
+        let (_, ot, ob, mut ov, _) = b;
+        let Vec3 { x: x2, y: y2, z: _ } = ot.translation;
+        let r2 = ob.0;
+        let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
+        if d < r1 + r2 {
+            // calculate projection of colliders velocity vector along distance vector between centers
+            let v = vec2((x1 - x2).powi(2).sqrt(), (y1 - y2).powi(2).sqrt());
+
+            // w parallel to v
+            let wp = ((cv.x * v.x + cv.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
+            // w orthogonal / perpendicular to v
+            let wo = cv.0 - wp;
+            cv.0 = wp * -0.992 + wo;
+
+            // w parallel to v
+            let wp = ((ov.x * v.x + ov.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
+            // w orthogonal / perpendicular to v
+            let wo = ov.0 - wp;
+            ov.0 = wp * -0.992 + wo;
+        }
+    }
+}
+// Temporarily Radius will act as Mass for momentum calculation
+pub fn physics_collision_system<A: Component, B: Component>(
+    mut colliders: Query<(Entity, &mut Transform, &Bounding, &mut Velocity, With<A>)>,
+    obstructors: Query<(Entity, &Transform, &Bounding, &Velocity, With<B>)>,
+    mut rng: Local<Random>,
+) {
+    for (_, mut ct, cb, mut cv, _) in colliders.iter_mut() {
+        let Vec3 { x: x1, y: y1, z: _ } = ct.translation;
+        let r1 = cb.0;
+        for (_, ot, ob, ov, _) in obstructors.iter() {
+            let Vec3 { x: x2, y: y2, z: _ } = ot.translation;
+            let r2 = ob.0;
+            let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
+            if d < r1 + r2 {
+                // calculate projection of colliders velocity vector along distance vector between centers
+                let v = vec2((x1 - x2).powi(2).sqrt(), (y1 - y2).powi(2).sqrt());
+                // w parallel to v
+                let wp = ((cv.x * v.x + cv.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
+                // w orthogonal / perpendicular to v
+                let wo = cv.0 - wp;
+                cv.0 = wp * -1.0 + wo;
+            }
+        }
+    }
+}
+
 pub fn collision_system<A: Component, B: Component>(
     mut ev_hit: EventWriter<HitEvent>,
     mut ev_explode: EventWriter<ExplosionEvent>,
