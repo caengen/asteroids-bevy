@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use super::{
     random::{Random, RandomPlugin},
     Asteroid, AsteroidSpawnEvent, ExplosionEvent, HitEvent, PlayerDeathEvent, Ship, ShipState,
@@ -27,20 +29,31 @@ pub fn self_collision_system<A: Component>(
         let r2 = ob.0;
         let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
         if d < r1 + r2 {
+            // set distance between to exactly r1 + r2
+            let mut dist = (ct.translation - ot.translation);
+            dist.x *= (r1 + r2) / d;
+            dist.y *= (r1 + r2) / d;
+            ct.translation = dist + ot.translation;
+
             // calculate projection of colliders velocity vector along distance vector between centers
             let v = vec2((x1 - x2).powi(2).sqrt(), (y1 - y2).powi(2).sqrt());
 
             // w parallel to v
-            let wp = ((cv.x * v.x + cv.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
+            let wp1 = ((cv.x * v.x + cv.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
             // w orthogonal / perpendicular to v
-            let wo = cv.0 - wp;
-            cv.0 = wp * -0.992 + wo;
+            let wo1 = cv.0 - wp1;
+            // momentum
+            let wp2 = ((ov.x * v.x + ov.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
+            // w orthogonal / perpendicular to v
+            let wo2 = ov.0 - wp1;
+
+            let p1 = wp1 * (PI * r1.powi(2));
+            let p2 = wp2 * (PI * r2.powi(2));
+
+            cv.0 = wp1 * -0.992 + wo1;
 
             // w parallel to v
-            let wp = ((ov.x * v.x + ov.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
-            // w orthogonal / perpendicular to v
-            let wo = ov.0 - wp;
-            ov.0 = wp * -0.992 + wo;
+            ov.0 = wp2 * -0.992 + wo2;
         }
     }
 }
