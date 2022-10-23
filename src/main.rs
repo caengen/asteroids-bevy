@@ -451,7 +451,7 @@ fn asteroid_generation_system(
                     )),
                 )
                 .insert(Bounding::from(bounding))
-                .insert(BoundaryRemoval)
+                .insert(BoundaryWrap)
                 .insert(Velocity::from(vel))
                 .insert(AngularVelocity::from(rng.gen_range(0.5..2.0)))
                 .insert(Asteroid)

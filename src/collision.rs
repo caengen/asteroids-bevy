@@ -21,39 +21,39 @@ pub fn self_collision_system<A: Component>(
 ) {
     let mut combinations = colliders.iter_combinations_mut();
     while let Some([mut a, mut b]) = combinations.fetch_next() {
-        let (_, mut ct, cb, mut cv, _) = a;
-        let Vec3 { x: x1, y: y1, z: _ } = ct.translation;
-        let r1 = cb.0;
-        let (_, ot, ob, mut ov, _) = b;
-        let Vec3 { x: x2, y: y2, z: _ } = ot.translation;
-        let r2 = ob.0;
+        let (_, mut at, ab, mut av, _) = a;
+        let Vec3 { x: x1, y: y1, z: _ } = at.translation;
+        let r1 = ab.0;
+        let (_, bt, bb, mut bv, _) = b;
+        let Vec3 { x: x2, y: y2, z: _ } = bt.translation;
+        let r2 = bb.0;
         let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
         if d < r1 + r2 {
             // set distance between to exactly r1 + r2
-            let mut dist = (ct.translation - ot.translation);
+            let mut dist = (at.translation - bt.translation);
             dist.x *= (r1 + r2) / d;
             dist.y *= (r1 + r2) / d;
-            ct.translation = dist + ot.translation;
+            at.translation = dist + bt.translation;
 
             // calculate projection of colliders velocity vector along distance vector between centers
             let v = vec2((x1 - x2).powi(2).sqrt(), (y1 - y2).powi(2).sqrt());
 
             // w parallel to v
-            let wp1 = ((cv.x * v.x + cv.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
+            let wp1 = ((av.x * v.x + av.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
             // w orthogonal / perpendicular to v
-            let wo1 = cv.0 - wp1;
+            let wo1 = av.0 - wp1;
             // momentum
-            let wp2 = ((ov.x * v.x + ov.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
+            let wp2 = ((bv.x * v.x + bv.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
             // w orthogonal / perpendicular to v
-            let wo2 = ov.0 - wp1;
+            let wo2 = bv.0 - wp1;
 
             let p1 = wp1 * (PI * r1.powi(2));
             let p2 = wp2 * (PI * r2.powi(2));
 
-            cv.0 = wp1 * -0.992 + wo1;
+            av.0 = wp1 * -0.992 + wo1;
 
             // w parallel to v
-            ov.0 = wp2 * -0.992 + wo2;
+            bv.0 = wp2 * -0.992 + wo2;
         }
     }
 }
