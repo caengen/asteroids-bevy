@@ -453,20 +453,20 @@ fn asteroid_generation_system(
                 .insert(Bounding::from(bounding))
                 .insert(BoundaryWrap)
                 .insert(Velocity::from(vel))
-                .insert(AngularVelocity::from(rng.gen_range(0.5..2.0)))
+                .insert(AngularVelocity::from(rng.gen_range(0.1..1.0)))
                 .insert(Asteroid)
                 .insert_children(0, &[debug_bound]);
         }
     }
 }
 
-pub fn polygon(origo: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
+pub fn polygon(center: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
     let mut points = Vec::new();
     let angle_inc = 360.0 / amount as f32;
 
     for i in 1..=amount {
         let rot = (angle_inc * i as f32).to_radians();
-        points.push(vec2(origo.x + r * rot.sin(), origo.y - r * rot.cos()));
+        points.push(vec2(center.x + r * rot.sin(), center.y - r * rot.cos()));
     }
 
     points

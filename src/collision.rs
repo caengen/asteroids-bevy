@@ -23,10 +23,11 @@ pub fn self_collision_system<A: Component>(
     while let Some([mut a, mut b]) = combinations.fetch_next() {
         let (_, mut at, ab, mut av, _) = a;
         let Vec3 { x: x1, y: y1, z: _ } = at.translation;
-        let r1 = ab.0;
+        let r1 = ab.0; // radius
         let (_, bt, bb, mut bv, _) = b;
         let Vec3 { x: x2, y: y2, z: _ } = bt.translation;
-        let r2 = bb.0;
+        let r2 = bb.0; // radius
+                       // distance between centers
         let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
         if d < r1 + r2 {
             // set distance between to exactly r1 + r2
@@ -35,25 +36,33 @@ pub fn self_collision_system<A: Component>(
             dist.y *= (r1 + r2) / d;
             at.translation = dist + bt.translation;
 
-            // calculate projection of colliders velocity vector along distance vector between centers
-            let v = vec2((x1 - x2).powi(2).sqrt(), (y1 - y2).powi(2).sqrt());
+            // calculate projection of colliders velocities
+            // we want to extract the part of the velocity vector that is parallel to the
+            // line between the centers
+            let u = vec2((x1 - x2).powi(2).sqrt(), (y1 - y2).powi(2).sqrt());
 
+            // only direct (parallel) vectors are used for the collision
             // w parallel to v
-            let wp1 = ((av.x * v.x + av.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
+            let wp1 = ((av.x * u.x + av.y * u.y) / (u.x.powi(2) + u.y.powi(2))) * u;
             // w orthogonal / perpendicular to v
             let wo1 = av.0 - wp1;
-            // momentum
-            let wp2 = ((bv.x * v.x + bv.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
+            // w parallel to v
+            let wp2 = ((bv.x * u.x + bv.y * u.y) / (u.x.powi(2) + u.y.powi(2))) * u;
             // w orthogonal / perpendicular to v
             let wo2 = bv.0 - wp1;
 
-            let p1 = wp1 * (PI * r1.powi(2));
-            let p2 = wp2 * (PI * r2.powi(2));
+            /**
+             * Law of conservation of momentum
+             * The total momentum before the collision is equal to the momentum
+             * after the collision.
+             */
+            let m1 = PI * r1.powi(2);
+            let m2 = PI * r2.powi(2);
+            let wp1f = ((m1 - m2) / (m1 + m2)) * wp1 + ((2.0 * m2) / (m1 + m2)) * wp2;
+            let wp2f = ((2.0 * m1) / (m1 + m2)) * wp1 - ((m1 - m2) / (m1 + m2)) * wp2;
 
-            av.0 = wp1 * -0.992 + wo1;
-
-            // w parallel to v
-            bv.0 = wp2 * -0.992 + wo2;
+            av.0 = wp1f * 0.992 + wo1;
+            bv.0 = wp2f * 0.992 + wo2;
         }
     }
 }
