@@ -61,8 +61,8 @@ pub fn self_collision_system<A: Component>(
             let wp1f = ((m1 - m2) / (m1 + m2)) * wp1 + ((2.0 * m2) / (m1 + m2)) * wp2;
             let wp2f = ((2.0 * m1) / (m1 + m2)) * wp1 - ((m1 - m2) / (m1 + m2)) * wp2;
 
-            av.0 = wp1f * 0.992 + wo1;
-            bv.0 = wp2f * 0.992 + wo2;
+            av.0 = (wp1f + wo1) * 0.992;
+            bv.0 = (wp2f + wo2) * 0.992;
         }
     }
 }

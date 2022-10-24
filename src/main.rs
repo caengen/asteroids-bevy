@@ -314,6 +314,7 @@ fn asteroid_spawn_system(
     window: Res<WindowDescriptor>,
     mut rng: Local<Random>,
     mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
+    asteroids: Query<(&Transform, &Bounding, With<Asteroid>)>,
 ) {
     if !rng.gen_bool(1.0 / 4.0) {
         return;
@@ -337,6 +338,18 @@ fn asteroid_spawn_system(
         2 => vec2(rng.gen_range(-w..w), -h),
         _ => vec2(rng.gen_range(-w..w), h),
     };
+
+    let Vec2 { x: x1, y: y1 } = pos;
+    let r1 = radius;
+    for (transform, bounding, _) in asteroids.iter() {
+        let Vec3 { x: x2, y: y2, z: _ } = transform.translation;
+        let r2 = bounding.0;
+        let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
+        if d < r1 + r2 {
+            // spawn collides with existing asteroid
+            return;
+        }
+    }
 
     let amount = 1;
     ev_asteroid_spawn.send(AsteroidSpawnEvent {
