@@ -42,8 +42,8 @@ pub const PARTICLE_DAMPING: f32 = 0.992;
 pub const POLY_LINE_WIDTH: f32 = 1.0;
 pub const ASTEROID_LINE_WIDTH: f32 = 3.0;
 
-pub const DARK: (f32, f32, f32) = (49.0, 47.0, 40.0);
-pub const LIGHT: (f32, f32, f32) = (218.0, 216.0, 209.0);
+pub const DARK: Color = Color::rgb(0.191, 0.184, 0.156);
+pub const LIGHT: Color = Color::rgb(0.852, 0.844, 0.816);
 
 pub const ASTEROID_SIZES: (
     RangeInclusive<f32>,
@@ -69,7 +69,7 @@ fn main() {
             height: SCREEN_HEIGHT,
             ..default()
         })
-        .insert_resource(ClearColor(Color::BLACK))
+        .insert_resource(ClearColor(DARK))
         .insert_resource(Msaa { samples: 4 })
         .add_event::<AsteroidSpawnEvent>()
         .add_event::<HitEvent>()
@@ -197,8 +197,8 @@ fn setup_system(mut commands: Commands) {
             (GeometryBuilder::build_as(
                 &shape,
                 DrawMode::Outlined {
-                    outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH),
-                    fill_mode: FillMode::color(Color::WHITE),
+                    outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH),
+                    fill_mode: FillMode::color(LIGHT),
                 },
                 Transform {
                     rotation: Quat::from_rotation_z(180.0_f32.to_radians()),
@@ -260,8 +260,8 @@ fn explosion_system(
                     (GeometryBuilder::build_as(
                         &shape,
                         DrawMode::Outlined {
-                            outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH),
-                            fill_mode: FillMode::color(Color::WHITE),
+                            outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH),
+                            fill_mode: FillMode::color(LIGHT),
                         },
                         Transform {
                             translation: vec3(pos.x + particle_pos.x, pos.y + particle_pos.y, 1.0),
@@ -435,31 +435,31 @@ fn asteroid_generation_system(
                 }
             };
 
-            let d_circle = shapes::Circle {
-                radius: average,
-                ..Default::default()
-            };
-            let debug_bound = commands
-                .spawn()
-                .insert_bundle(
-                    (GeometryBuilder::build_as(
-                        &d_circle,
-                        DrawMode::Outlined {
-                            outline_mode: StrokeMode::new(Color::RED, POLY_LINE_WIDTH * 1.5),
-                            fill_mode: FillMode::color(Color::NONE),
-                        },
-                        Transform::default(),
-                    )),
-                )
-                .id();
+            // let d_circle = shapes::Circle {
+            //     radius: average,
+            //     ..Default::default()
+            // };
+            // let debug_bound = commands
+            //     .spawn()
+            //     .insert_bundle(
+            //         (GeometryBuilder::build_as(
+            //             &d_circle,
+            //             DrawMode::Outlined {
+            //                 outline_mode: StrokeMode::new(Color::RED, POLY_LINE_WIDTH * 1.5),
+            //                 fill_mode: FillMode::color(DARK),
+            //             },
+            //             Transform::default(),
+            //         )),
+            //     )
+            //     .id();
             let mut asteroid = commands
                 .spawn()
                 .insert_bundle(
                     (GeometryBuilder::build_as(
                         &shape,
                         DrawMode::Outlined {
-                            outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH * 1.5),
-                            fill_mode: FillMode::color(Color::NONE),
+                            outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH * 1.5),
+                            fill_mode: FillMode::color(DARK),
                         },
                         Transform::default().with_translation(center),
                     )),
@@ -469,8 +469,8 @@ fn asteroid_generation_system(
                 .insert(Velocity::from(vel))
                 .insert(SpeedLimit::from(200.0))
                 .insert(AngularVelocity::from(rng.gen_range(0.1..1.0)))
-                .insert(Asteroid)
-                .insert_children(0, &[debug_bound]);
+                .insert(Asteroid);
+            // .insert_children(0, &[debug_bound]);
         }
     }
 }
@@ -546,8 +546,8 @@ fn cannon_control_system(
                     (GeometryBuilder::build_as(
                         &shape,
                         DrawMode::Outlined {
-                            outline_mode: StrokeMode::new(Color::WHITE, POLY_LINE_WIDTH),
-                            fill_mode: FillMode::color(Color::WHITE),
+                            outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH),
+                            fill_mode: FillMode::color(LIGHT),
                         },
                         Transform {
                             translation: transform.translation
