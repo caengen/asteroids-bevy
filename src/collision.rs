@@ -31,14 +31,14 @@ pub fn self_collision_system<A: Component>(
         let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
         if d < r1 + r2 {
             // set distance between to exactly r1 + r2
-            let mut dist = (at.translation - bt.translation);
+            let mut dist = at.translation - bt.translation;
             dist.x *= (r1 + r2) / d;
             dist.y *= (r1 + r2) / d;
             at.translation = dist + bt.translation;
 
             // calculate projection of colliders velocities
             // we want to extract the part of the velocity vector that is parallel to the
-            // line between the centers
+            // line between the centers (u)
             let u = vec2((x1 - x2).powi(2).sqrt(), (y1 - y2).powi(2).sqrt());
 
             // only direct (parallel) vectors are used for the collision
@@ -66,7 +66,7 @@ pub fn self_collision_system<A: Component>(
         }
     }
 }
-// Temporarily Radius will act as Mass for momentum calculation
+
 pub fn physics_collision_system<A: Component, B: Component>(
     mut colliders: Query<(Entity, &mut Transform, &Bounding, &mut Velocity, With<A>)>,
     obstructors: Query<(Entity, &Transform, &Bounding, &Velocity, With<B>)>,

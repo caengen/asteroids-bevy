@@ -11,7 +11,7 @@ pub struct AngularVelocity(pub f32);
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 pub struct Damping(pub f32);
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Default, Deref, DerefMut, From)]
 pub struct SpeedLimit(pub f32);
 
 pub fn movement_system(

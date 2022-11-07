@@ -109,9 +109,9 @@ fn main() {
                 .with_system(collision_system::<Bullet, Asteroid>)
                 .with_system(collision_system::<Asteroid, Bullet>)
                 .with_system(collision_system::<Asteroid, Ship>)
+                .with_system(self_collision_system::<Asteroid>)
                 .after(System::Boundary),
         )
-        .add_system(self_collision_system::<Asteroid>.before(System::Movement))
         .add_system(hit_system.after(System::Collision))
         .add_system(explosion_system.after(System::Collision))
         .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
@@ -216,6 +216,7 @@ fn setup_system(mut commands: Commands) {
         })
         .insert(BoundaryWrap)
         .insert(Velocity::default())
+        .insert(SpeedLimit::from(200.0))
         .insert(AngularVelocity::default())
         .insert(Damping::from(PLAYER_DAMPING));
 }
@@ -466,6 +467,7 @@ fn asteroid_generation_system(
                 .insert(Bounding::from(bounding))
                 .insert(BoundaryWrap)
                 .insert(Velocity::from(vel))
+                .insert(SpeedLimit::from(200.0))
                 .insert(AngularVelocity::from(rng.gen_range(0.1..1.0)))
                 .insert(Asteroid)
                 .insert_children(0, &[debug_bound]);
