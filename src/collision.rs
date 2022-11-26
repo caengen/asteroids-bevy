@@ -67,31 +67,6 @@ pub fn self_collision_system<A: Component>(
     }
 }
 
-pub fn physics_collision_system<A: Component, B: Component>(
-    mut colliders: Query<(Entity, &mut Transform, &Bounding, &mut Velocity, With<A>)>,
-    obstructors: Query<(Entity, &Transform, &Bounding, &Velocity, With<B>)>,
-    mut rng: Local<Random>,
-) {
-    for (_, mut ct, cb, mut cv, _) in colliders.iter_mut() {
-        let Vec3 { x: x1, y: y1, z: _ } = ct.translation;
-        let r1 = cb.0;
-        for (_, ot, ob, ov, _) in obstructors.iter() {
-            let Vec3 { x: x2, y: y2, z: _ } = ot.translation;
-            let r2 = ob.0;
-            let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
-            if d < r1 + r2 {
-                // calculate projection of colliders velocity vector along distance vector between centers
-                let v = vec2((x1 - x2).powi(2).sqrt(), (y1 - y2).powi(2).sqrt());
-                // w parallel to v
-                let wp = ((cv.x * v.x + cv.y * v.y) / (v.x.powi(2) + v.y.powi(2))) * v;
-                // w orthogonal / perpendicular to v
-                let wo = cv.0 - wp;
-                cv.0 = wp * -1.0 + wo;
-            }
-        }
-    }
-}
-
 pub fn collision_system<A: Component, B: Component>(
     mut ev_hit: EventWriter<HitEvent>,
     mut ev_explode: EventWriter<ExplosionEvent>,

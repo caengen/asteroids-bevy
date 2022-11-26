@@ -8,6 +8,7 @@ use bevy::{
 };
 use bevy_inspector_egui::WorldInspectorPlugin;
 use bevy_inspector_egui::{Inspectable, InspectorPlugin};
+use bevy_prototype_lyon::entity::ShapeBundle;
 use bevy_prototype_lyon::{
     prelude::{
         tess::{geom::Rotation, math::Angle},
@@ -452,27 +453,36 @@ fn asteroid_generation_system(
             //         )),
             //     )
             //     .id();
-            let mut asteroid = commands
-                .spawn()
-                .insert_bundle(
-                    (GeometryBuilder::build_as(
-                        &shape,
-                        DrawMode::Outlined {
-                            outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH * 1.5),
-                            fill_mode: FillMode::color(DARK),
-                        },
-                        Transform::default().with_translation(center),
-                    )),
-                )
-                .insert(Bounding::from(bounding))
-                .insert(BoundaryWrap)
-                .insert(Velocity::from(vel))
-                .insert(SpeedLimit::from(200.0))
-                .insert(AngularVelocity::from(rng.gen_range(0.1..1.0)))
-                .insert(Asteroid);
-            // .insert_children(0, &[debug_bound]);
+            let mut asteroid = commands.spawn().insert_bundle(AsteroidBundle {
+                shape: (GeometryBuilder::build_as(
+                    &shape,
+                    DrawMode::Outlined {
+                        outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH * 1.5),
+                        fill_mode: FillMode::color(DARK),
+                    },
+                    Transform::default().with_translation(center),
+                )),
+                bound: Bounding::from(bounding),
+                wrap: BoundaryWrap,
+                vel: Velocity::from(vel),
+                vel_limit: SpeedLimit::from(200.0),
+                ang_vel: AngularVelocity::from(rng.gen_range(0.1..1.0)),
+                marker: Asteroid,
+            });
         }
     }
+}
+
+#[derive(Bundle)]
+struct AsteroidBundle {
+    bound: Bounding,
+    wrap: BoundaryWrap,
+    vel: Velocity,
+    vel_limit: SpeedLimit,
+    ang_vel: AngularVelocity,
+    marker: Asteroid,
+    #[bundle]
+    shape: ShapeBundle,
 }
 
 pub fn polygon(center: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
@@ -540,31 +550,44 @@ fn cannon_control_system(
                 ..Default::default()
             };
 
-            let _bullet = commands
-                .spawn()
-                .insert_bundle(
-                    (GeometryBuilder::build_as(
-                        &shape,
-                        DrawMode::Outlined {
-                            outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH),
-                            fill_mode: FillMode::color(LIGHT),
-                        },
-                        Transform {
-                            translation: transform.translation
-                                + vec3(direction.x * bounding.0, direction.y * bounding.0, 0.0),
-                            ..Default::default()
-                        },
-                    )),
-                )
-                .insert(Bounding::from(CANNON_BULLET_RADIUS))
-                .insert(BoundaryRemoval)
-                .insert(Velocity::from(vec2(
-                    cannon.0 * direction.x,
-                    cannon.0 * direction.y,
-                )))
-                .insert(Bullet(Timer::new(Duration::from_millis(1250), false)));
+            let _bullet = commands.spawn().insert_bundle(BulletBundle {
+                bounding: Bounding::from(CANNON_BULLET_RADIUS),
+                velocity: Velocity::from(vec2(cannon.0 * direction.x, cannon.0 * direction.y)),
+                bullet: Bullet(Timer::new(Duration::from_millis(1250), false)),
+                boundary_removal: BoundaryRemoval,
+                shape: (GeometryBuilder::build_as(
+                    &shape,
+                    DrawMode::Outlined {
+                        outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH),
+                        fill_mode: FillMode::color(LIGHT),
+                    },
+                    Transform {
+                        translation: transform.translation
+                            + vec3(direction.x * bounding.0, direction.y * bounding.0, 0.0),
+                        ..Default::default()
+                    },
+                )),
+            });
+            // .insert(Bounding::from(CANNON_BULLET_RADIUS))
+            // .insert(BoundaryRemoval)
+            // .insert(Velocity::from(vec2(
+            //     cannon.0 * direction.x,
+            //     cannon.0 * direction.y,
+            // )))
+            // .insert(Bullet(Timer::new(Duration::from_millis(1250), false)));
         }
     }
+}
+
+#[derive(Bundle)]
+
+struct BulletBundle {
+    bounding: Bounding,
+    boundary_removal: BoundaryRemoval,
+    velocity: Velocity,
+    bullet: Bullet,
+    #[bundle]
+    shape: ShapeBundle,
 }
 
 fn bullet_despawn_system(
@@ -698,7 +721,7 @@ pub struct Bullet(pub Timer);
 
 #[derive(Debug, Component)]
 pub struct BoundaryWrap;
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Default)]
 pub struct BoundaryRemoval;
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
