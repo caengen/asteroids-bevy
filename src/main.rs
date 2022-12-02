@@ -1,3 +1,4 @@
+use asteroid::*;
 use bevy::ecs::component::Component;
 use bevy::{
     math::{const_vec2, vec2, vec3},
@@ -16,17 +17,22 @@ use bevy_prototype_lyon::{
     },
     shapes::{Circle, Polygon},
 };
+use boundary::*;
 use collision::*;
 use derive_more::From;
-use physics::*;
+use movement::*;
 use rand::Rng;
 use random::{Random, RandomPlugin};
 use std::ops::RangeInclusive;
 use std::{default::Default, f32::consts::PI, ops::Range, time::Duration};
+use weapons::*;
 
+mod asteroid;
+mod boundary;
 mod collision;
-mod physics;
+mod movement;
 mod random;
+mod weapons;
 
 const SCREEN_HEIGHT: f32 = 640.0;
 const SCREEN_WIDTH: f32 = 960.0;
@@ -34,23 +40,16 @@ pub const SCREEN: Vec2 = Vec2::from_array([SCREEN_WIDTH, SCREEN_HEIGHT]);
 // pub const TIME_STEP: f32 = 1.0 / 60.0;
 pub const GAME_WIDTH: f32 = 240.0;
 // pub const PIXELS_PER_METER: f32 = 30.0 / SCALE;
-pub const CANNON_BULLET_RADIUS: f32 = 1.0;
+
 pub const PARTICLE_RADIUS: f32 = 0.3;
 
 pub const PLAYER_SIZE: f32 = 20.0;
 pub const PLAYER_DAMPING: f32 = 0.992;
 pub const PARTICLE_DAMPING: f32 = 0.992;
 pub const POLY_LINE_WIDTH: f32 = 1.0;
-pub const ASTEROID_LINE_WIDTH: f32 = 3.0;
 
 pub const DARK: Color = Color::rgb(0.191, 0.184, 0.156);
 pub const LIGHT: Color = Color::rgb(0.852, 0.844, 0.816);
-
-pub const ASTEROID_SIZES: (
-    RangeInclusive<f32>,
-    RangeInclusive<f32>,
-    RangeInclusive<f32>,
-) = (60.0..=80.0, 30.0..=50.00, 10.0..=20.0);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, SystemLabel)]
 enum System {
@@ -298,191 +297,12 @@ pub struct HitEvent {
     entity: Entity,
 }
 
+pub struct PlayerDeathEvent {}
 pub struct ExplosionEvent {
     pub pos: Vec3,
     pub radius: f32,
     pub particles: Range<i32>,
     pub impact_vel: Vec2,
-}
-pub struct AsteroidSpawnEvent {
-    pub pos: Vec2,
-    pub radius: f32,
-    pub amount: i32,
-}
-
-pub struct PlayerDeathEvent {}
-
-fn asteroid_spawn_system(
-    window: Res<WindowDescriptor>,
-    mut rng: Local<Random>,
-    mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
-    asteroids: Query<(&Transform, &Bounding, With<Asteroid>)>,
-) {
-    if !rng.gen_bool(1.0 / 4.0) {
-        return;
-    }
-
-    let h = window.height / 2.0;
-    let w = window.width / 2.0;
-
-    let size = rng.gen_range(0..=10);
-    let radius = match size {
-        0..=3 => rng.gen_range(ASTEROID_SIZES.0),
-        4..=6 => rng.gen_range(ASTEROID_SIZES.1),
-        7..=9 => rng.gen_range(ASTEROID_SIZES.2),
-        _ => rng.gen_range(ASTEROID_SIZES.0),
-    };
-
-    let side = rng.gen_range(0..=3);
-    let pos = match side {
-        0 => vec2(-w, rng.gen_range(-h..h)),
-        1 => vec2(w, rng.gen_range(-h..h)),
-        2 => vec2(rng.gen_range(-w..w), -h),
-        _ => vec2(rng.gen_range(-w..w), h),
-    };
-
-    let Vec2 { x: x1, y: y1 } = pos;
-    let r1 = radius;
-    for (transform, bounding, _) in asteroids.iter() {
-        let Vec3 { x: x2, y: y2, z: _ } = transform.translation;
-        let r2 = bounding.0;
-        let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
-        if d < r1 + r2 {
-            // spawn collides with existing asteroid
-            return;
-        }
-    }
-
-    let amount = 1;
-    ev_asteroid_spawn.send(AsteroidSpawnEvent {
-        amount,
-        pos,
-        radius,
-    });
-}
-
-fn asteroid_generation_system(
-    mut commands: Commands,
-    mut rng: Local<Random>,
-    mut ev_asteroid_spawn: EventReader<AsteroidSpawnEvent>,
-) {
-    for AsteroidSpawnEvent {
-        amount,
-        pos,
-        radius,
-    } in ev_asteroid_spawn.iter()
-    {
-        for i in 0..*amount {
-            let pos = if *amount > 0 {
-                let angle = ((360 / *amount * i) as f32).to_radians();
-                vec2(
-                    pos.x + *radius * 1.25 * angle.sin(),
-                    pos.y + *radius * 1.25 * angle.cos(),
-                )
-            } else {
-                *pos
-            };
-
-            let edges = rng.gen_range(7..12);
-
-            let mut points = Vec::new();
-            let angle_inc = 360.0 / edges as f32;
-
-            for i in 1..=edges {
-                let r = match *radius as usize {
-                    60..=80 => rng.gen_range(60..=(*radius as i32)),
-                    30..=50 => rng.gen_range(30..=(*radius as i32)),
-                    _ => rng.gen_range(10..=(*radius as i32)),
-                } as f32;
-
-                let angle = (angle_inc * i as f32).to_radians();
-                points.push(vec2(r * angle.sin(), r * angle.cos()));
-            }
-            let p_len = points.len();
-            let average = points
-                .clone()
-                .iter()
-                .map(|p| ((p.x).powi(2) + (p.y).powi(2)).sqrt())
-                .sum::<f32>()
-                / p_len as f32;
-            let bounding = average;
-            let shape = shapes::Polygon {
-                points,
-                closed: true,
-            };
-
-            let center = vec3(pos.x, pos.y, 1.0);
-            let vel = match *radius as usize {
-                60..=80 => {
-                    let dest = vec3(1.0, 1.0, 1.0);
-                    let angle = center.angle_between(dest);
-                    let direction = Quat::from_rotation_z(angle) * -Vec3::Y; //TODO: find out why this works
-                    let force = rng.gen_range(10.0..50.00);
-                    vec2(force * direction.x, force * direction.y)
-                }
-                40..=50 => {
-                    let direction =
-                        Quat::from_rotation_z((rng.gen_range(0..360) as f32).to_radians())
-                            * -Vec3::Y; //TODO: find out why this works
-                    let force = rng.gen_range(20.0..60.00);
-                    vec2(force * direction.x, force * direction.y)
-                }
-                _ => {
-                    let direction =
-                        Quat::from_rotation_z((rng.gen_range(0..360) as f32).to_radians())
-                            * -Vec3::Y; //TODO: find out why this works
-                    let force = rng.gen_range(30.0..70.00);
-                    vec2(force * direction.x, force * direction.y)
-                }
-            };
-
-            // let d_circle = shapes::Circle {
-            //     radius: average,
-            //     ..Default::default()
-            // };
-            // let debug_bound = commands
-            //     .spawn()
-            //     .insert_bundle(
-            //         (GeometryBuilder::build_as(
-            //             &d_circle,
-            //             DrawMode::Outlined {
-            //                 outline_mode: StrokeMode::new(Color::RED, POLY_LINE_WIDTH * 1.5),
-            //                 fill_mode: FillMode::color(DARK),
-            //             },
-            //             Transform::default(),
-            //         )),
-            //     )
-            //     .id();
-            let mut asteroid = commands.spawn().insert_bundle(AsteroidBundle {
-                shape: (GeometryBuilder::build_as(
-                    &shape,
-                    DrawMode::Outlined {
-                        outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH * 1.5),
-                        fill_mode: FillMode::color(DARK),
-                    },
-                    Transform::default().with_translation(center),
-                )),
-                bound: Bounding::from(bounding),
-                wrap: BoundaryWrap,
-                vel: Velocity::from(vel),
-                vel_limit: SpeedLimit::from(200.0),
-                ang_vel: AngularVelocity::from(rng.gen_range(0.1..1.0)),
-                marker: Asteroid,
-            });
-        }
-    }
-}
-
-#[derive(Bundle)]
-struct AsteroidBundle {
-    bound: Bounding,
-    wrap: BoundaryWrap,
-    vel: Velocity,
-    vel_limit: SpeedLimit,
-    ang_vel: AngularVelocity,
-    marker: Asteroid,
-    #[bundle]
-    shape: ShapeBundle,
 }
 
 pub fn polygon(center: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
@@ -495,147 +315,6 @@ pub fn polygon(center: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
     }
 
     points
-}
-
-fn boundary_removal_system(
-    mut commands: Commands,
-    window: Res<WindowDescriptor>,
-    mut query: Query<(Entity, &Transform, &Bounding, With<BoundaryRemoval>)>,
-) {
-    let w = window.width / 2.0;
-    let h = window.height / 2.0;
-    for (entity, transform, bounding, _) in query.iter_mut() {
-        let Vec3 { x, y, z: _ } = transform.translation;
-        let r = bounding.0;
-        if x < -w - r || x > w + r || y > h + r || y < -h - r {
-            commands.entity(entity).despawn();
-        }
-    }
-}
-
-fn boundary_wrapping_system(
-    window: Res<WindowDescriptor>,
-    mut query: Query<(&mut Transform, &Bounding, With<BoundaryWrap>)>,
-) {
-    for (mut transform, bound, _) in query.iter_mut() {
-        let w = window.width / 2.0;
-        let h = window.height / 2.0;
-        let r = bound.0;
-        let Vec3 { x, y, z: _ } = transform.translation;
-
-        if x > w + r {
-            transform.translation.x = -w - r;
-        } else if x < -w - r {
-            transform.translation.x = w + r;
-        }
-
-        if y > h + r {
-            transform.translation.y = -h - r;
-        } else if y < -h - r {
-            transform.translation.y = h + r;
-        }
-    }
-}
-
-fn cannon_control_system(
-    mut commands: Commands,
-    query: Query<(&Transform, &Bounding, &Cannon)>,
-    keyboard: Res<Input<KeyCode>>,
-) {
-    for (transform, bounding, cannon) in query.iter() {
-        if keyboard.just_pressed(KeyCode::Space) {
-            let direction = transform.rotation * -Vec3::Y; //TODO: find out why this works
-            let shape = shapes::Circle {
-                radius: CANNON_BULLET_RADIUS,
-                ..Default::default()
-            };
-
-            let _bullet = commands.spawn().insert_bundle(BulletBundle {
-                bounding: Bounding::from(CANNON_BULLET_RADIUS),
-                velocity: Velocity::from(vec2(cannon.0 * direction.x, cannon.0 * direction.y)),
-                bullet: Bullet(Timer::new(Duration::from_millis(1250), false)),
-                boundary_removal: BoundaryRemoval,
-                shape: (GeometryBuilder::build_as(
-                    &shape,
-                    DrawMode::Outlined {
-                        outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH),
-                        fill_mode: FillMode::color(LIGHT),
-                    },
-                    Transform {
-                        translation: transform.translation
-                            + vec3(direction.x * bounding.0, direction.y * bounding.0, 0.0),
-                        ..Default::default()
-                    },
-                )),
-            });
-            // .insert(Bounding::from(CANNON_BULLET_RADIUS))
-            // .insert(BoundaryRemoval)
-            // .insert(Velocity::from(vec2(
-            //     cannon.0 * direction.x,
-            //     cannon.0 * direction.y,
-            // )))
-            // .insert(Bullet(Timer::new(Duration::from_millis(1250), false)));
-        }
-    }
-}
-
-#[derive(Bundle)]
-
-struct BulletBundle {
-    bounding: Bounding,
-    boundary_removal: BoundaryRemoval,
-    velocity: Velocity,
-    bullet: Bullet,
-    #[bundle]
-    shape: ShapeBundle,
-}
-
-fn bullet_despawn_system(
-    time: Res<Time>,
-    mut commands: Commands,
-    mut query: Query<(Entity, &mut Bullet)>,
-) {
-    for (entity, mut bullet) in query.iter_mut() {
-        bullet.0.tick(time.delta());
-        if bullet.0.finished() {
-            commands.entity(entity).despawn();
-        }
-    }
-}
-
-fn drive_control_system(mut query: Query<&mut Drive>, keyboard: Res<Input<KeyCode>>) {
-    for mut drive in query.iter_mut() {
-        drive.on = keyboard.pressed(KeyCode::Up);
-    }
-}
-
-fn drive_system(mut query: Query<(&mut Velocity, &Transform, &Drive)>) {
-    for (mut velocity, transform, drive) in query.iter_mut() {
-        if !drive.on {
-            return;
-        }
-
-        // what the fuck is this quat shit
-        // changed from Vec3::X to -Vec::Y and now this shit works wtf?
-        let direction = transform.rotation * -Vec3::Y;
-        velocity.x += direction.x * drive.force;
-        velocity.y += direction.y * drive.force;
-    }
-}
-
-fn steering_control_system(
-    mut query: Query<(&mut AngularVelocity, &SteeringControl)>,
-    keyboard: Res<Input<KeyCode>>,
-) {
-    for (mut angular_velocity, steering_control) in query.iter_mut() {
-        if keyboard.pressed(KeyCode::Left) {
-            *angular_velocity = AngularVelocity::from(steering_control.0.get());
-        } else if keyboard.pressed(KeyCode::Right) {
-            *angular_velocity = AngularVelocity::from(-steering_control.0.get());
-        } else {
-            *angular_velocity = AngularVelocity::from(0.0);
-        }
-    }
 }
 
 pub fn ship_points() -> Vec<Vec2> {
@@ -682,8 +361,6 @@ fn flick_system(
     }
 }
 
-#[derive(Debug, Component)]
-pub struct Asteroid;
 #[derive(Debug, Component, Default, From)]
 pub struct Flick {
     pub switch_timer: Timer,
@@ -696,36 +373,8 @@ pub struct Ship {
     pub timer: Timer,
 }
 
-#[derive(Debug, Component, Default, Deref, DerefMut, From)]
-pub struct Cannon(pub f32);
-
-#[derive(Debug, Component)]
-pub struct Drive {
-    pub on: bool,
-    pub force: f32,
-}
-impl Drive {
-    pub fn new(force: f32) -> Self {
-        Drive {
-            on: false,
-            force: force,
-        }
-    }
-}
-
 #[derive(Debug, Component)]
 pub struct TimedRemoval(pub Timer);
-
-#[derive(Debug, Component)]
-pub struct Bullet(pub Timer);
-
-#[derive(Debug, Component)]
-pub struct BoundaryWrap;
-#[derive(Debug, Component, Default)]
-pub struct BoundaryRemoval;
-
-#[derive(Debug, Component, Default, Deref, DerefMut, From)]
-pub struct SteeringControl(Angle);
 
 // impl Ship {
 //     fn alive() -> Self {
