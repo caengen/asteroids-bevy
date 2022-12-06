@@ -11,10 +11,7 @@ use bevy_inspector_egui::WorldInspectorPlugin;
 use bevy_inspector_egui::{Inspectable, InspectorPlugin};
 use bevy_prototype_lyon::entity::ShapeBundle;
 use bevy_prototype_lyon::{
-    prelude::{
-        tess::{geom::Rotation, math::Angle},
-        *,
-    },
+    prelude::{tess::math::Angle, *},
     shapes::{Circle, Polygon},
 };
 use boundary::*;
@@ -23,8 +20,7 @@ use derive_more::From;
 use movement::*;
 use rand::Rng;
 use random::{Random, RandomPlugin};
-use std::ops::RangeInclusive;
-use std::{default::Default, f32::consts::PI, ops::Range, time::Duration};
+use std::{default::Default, ops::Range, time::Duration};
 use weapons::*;
 
 mod asteroid;
