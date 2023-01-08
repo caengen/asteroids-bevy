@@ -12,11 +12,11 @@ use derive_more::From;
 use rand::Rng;
 
 fn distance_between(a: &Vec3, b: &Vec3) -> f32 {
-    (b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y)
+    a.distance(*b)
 }
 
 fn circles_touching(a: &Transform, ar: &Bounding, b: &Transform, br: &Bounding) -> bool {
-    distance_between(&a.translation, &b.translation) < (ar.0 + br.0) * (ar.0 + br.0)
+    distance_between(&a.translation, &b.translation) < (ar.0 + br.0)
 }
 
 fn distance_to_move(a: &Vec3, ar: f32, b: &Vec3, br: f32) -> f32 {
@@ -58,27 +58,24 @@ pub fn self_collision_system<A: Component>(
         let (_, mut bt, bb, mut bv, _) = b;
         let Vec3 { x: bx, y: by, z: _ } = bt.translation;
         let br = bb.0; // radius
-                       // distance between centers
 
         if circles_touching(&at, ab, &bt, bb) {
-            let angle = f32::atan2(by - ay, bx - ax);
+            let contact_angle = f32::atan2(by - ay, bx - ax);
 
             let distance_to_move = distance_to_move(&at.translation, ar, &bt.translation, br);
             // move the second circle
-            if distance_to_move > 0.0 {
-                bt.translation.x += f32::cos(angle) * distance_to_move;
-                bt.translation.y += f32::sin(angle) * distance_to_move;
-            }
+            bt.translation.x += f32::cos(contact_angle) * distance_to_move;
+            bt.translation.y += f32::sin(contact_angle) * distance_to_move;
 
             let v1 = av.length();
             let v2 = bv.length();
             let m1 = PI * ar.powi(2);
             let m2 = PI * br.powi(2);
-            let a1 = av.angle_between(Vec2::X);
-            let a2 = bv.angle_between(Vec2::X);
+            let a1 = av.angle_between(vec2(ax, ay));
+            let a2 = bv.angle_between(vec2(bx, by));
 
-            av.0 = vel_after_collision(v1, m1, a1, v2, m2, a2, angle) * 0.998;
-            bv.0 = vel_after_collision(v2, m2, a2, v1, m1, a1, angle) * 0.998;
+            av.0 = vel_after_collision(v1, m1, a1, v2, m2, a2, contact_angle) * 0.992;
+            bv.0 = vel_after_collision(v2, m2, a2, v1, m1, a1, contact_angle) * 0.992;
         }
     }
 }
@@ -106,8 +103,7 @@ pub fn collision_system<A: Component, B: Component>(
         for (victim, bt, bb, bvel, _, asteroid, ship) in victims.iter_mut() {
             let Vec3 { x: x2, y: y2, z: _ } = bt.translation;
             let r2 = bb.0;
-            let d = ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt();
-            if d < r1 + r2 {
+            if circles_touching(&at, ab, &bt, bb) {
                 if let Some(mut ship) = ship {
                     if matches!(ship.state, ShipState::Alive) {
                         ev_explode.send(ExplosionEvent {

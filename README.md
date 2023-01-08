@@ -6,6 +6,8 @@ Asteroids in Rust using Bevy.
 
 Run `cargo run`.
 
+To debug run `cargo run -- -d`.
+
 ![Demo](https://github.com/caengen/asteroids-bevy/blob/master/demo/demo.gif)
 
 ### Keybindings

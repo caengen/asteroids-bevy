@@ -1,6 +1,6 @@
 use super::{
     random::{Random, RandomPlugin},
-    AngularVelocity, BoundaryWrap, Bounding, ShapeBundle, SpeedLimit, Velocity, DARK, LIGHT,
+    AngularVelocity, BoundaryWrap, Bounding, Debug, ShapeBundle, SpeedLimit, Velocity, DARK, LIGHT,
     POLY_LINE_WIDTH,
 };
 use bevy::{
@@ -95,6 +95,7 @@ pub fn asteroid_generation_system(
     mut commands: Commands,
     mut rng: Local<Random>,
     mut ev_asteroid_spawn: EventReader<AsteroidSpawnEvent>,
+    debug: Res<Debug>,
 ) {
     for AsteroidSpawnEvent {
         amount,
@@ -166,39 +167,45 @@ pub fn asteroid_generation_system(
                 }
             };
 
-            // let d_circle = shapes::Circle {
-            //     radius: average,
-            //     ..Default::default()
-            // };
-            // let debug_bound = commands
-            //     .spawn()
-            //     .insert_bundle(
-            //         (GeometryBuilder::build_as(
-            //             &d_circle,
-            //             DrawMode::Outlined {
-            //                 outline_mode: StrokeMode::new(Color::RED, POLY_LINE_WIDTH * 1.5),
-            //                 fill_mode: FillMode::color(DARK),
-            //             },
-            //             Transform::default(),
-            //         )),
-            //     )
-            //     .id();
-            let mut asteroid = commands.spawn().insert_bundle(AsteroidBundle {
-                shape: (GeometryBuilder::build_as(
-                    &shape,
-                    DrawMode::Outlined {
-                        outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH * 1.5),
-                        fill_mode: FillMode::color(DARK),
-                    },
-                    Transform::default().with_translation(center),
-                )),
-                bound: Bounding::from(bounding),
-                wrap: BoundaryWrap,
-                vel: Velocity::from(vel),
-                vel_limit: SpeedLimit::from(200.0),
-                ang_vel: AngularVelocity::from(rng.gen_range(0.1..1.0)),
-                marker: Asteroid,
-            });
+            let asteroid = commands
+                .spawn_bundle(AsteroidBundle {
+                    shape: (GeometryBuilder::build_as(
+                        &shape,
+                        DrawMode::Outlined {
+                            outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH * 1.5),
+                            fill_mode: FillMode::color(DARK),
+                        },
+                        Transform::default().with_translation(center),
+                    )),
+                    bound: Bounding::from(bounding),
+                    wrap: BoundaryWrap,
+                    vel: Velocity::from(vel),
+                    vel_limit: SpeedLimit::from(200.0),
+                    ang_vel: AngularVelocity::from(rng.gen_range(0.1..1.0)),
+                    marker: Asteroid,
+                })
+                .id();
+
+            if debug.0 {
+                let d_circle = shapes::Circle {
+                    radius: average,
+                    ..Default::default()
+                };
+                let debug_bound = commands
+                    .spawn()
+                    .insert_bundle(
+                        (GeometryBuilder::build_as(
+                            &d_circle,
+                            DrawMode::Outlined {
+                                outline_mode: StrokeMode::new(Color::RED, POLY_LINE_WIDTH * 1.5),
+                                fill_mode: FillMode::color(DARK),
+                            },
+                            Transform::default(),
+                        )),
+                    )
+                    .id();
+                commands.entity(asteroid).insert_children(0, &[debug_bound]);
+            }
         }
     }
 }

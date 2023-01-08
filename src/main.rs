@@ -21,6 +21,7 @@ use movement::*;
 use rand::Rng;
 use random::{Random, RandomPlugin};
 use std::{default::Default, ops::Range, time::Duration};
+use std::{env, process};
 use weapons::*;
 
 mod asteroid;
@@ -56,66 +57,104 @@ enum System {
     Spawning,
 }
 
+#[derive(Default)]
+struct ProgramConfig {
+    debug: bool,
+}
+
+pub struct Debug(pub bool);
+
+impl ProgramConfig {
+    fn build(args: &[String]) -> Result<ProgramConfig, &'static str> {
+        let mut cfg = ProgramConfig::default();
+        if args.len() == 0 {
+            return Ok(cfg);
+        }
+
+        for arg in args {
+            match arg.as_ref() {
+                "-d" | "--debug" => {
+                    cfg.debug = true;
+                }
+                _ => return Err("unknown argument"),
+            }
+        }
+
+        Ok(cfg)
+    }
+}
+
 fn main() {
-    App::new()
-        .insert_resource(WindowDescriptor {
-            title: "asteroids-bevy".to_string(),
-            present_mode: PresentMode::Fifo,
-            width: SCREEN_WIDTH,
-            height: SCREEN_HEIGHT,
-            ..default()
-        })
-        .insert_resource(ClearColor(DARK))
-        .insert_resource(Msaa { samples: 4 })
-        .add_event::<AsteroidSpawnEvent>()
-        .add_event::<HitEvent>()
-        .add_event::<PlayerDeathEvent>()
-        .add_event::<ExplosionEvent>()
-        .add_plugins(DefaultPlugins)
-        .add_plugin(ShapePlugin)
-        .add_plugin(RandomPlugin)
-        .add_plugin(WorldInspectorPlugin::new())
-        .add_startup_system(setup_system)
-        .add_system_set(
-            SystemSet::new()
-                .label(System::Input)
-                .with_system(steering_control_system)
-                .with_system(drive_control_system)
-                .with_system(cannon_control_system),
-        )
-        .add_system_set(
-            SystemSet::new()
-                .label(System::Movement)
-                .with_system(movement_system)
-                .with_system(drive_system)
-                .with_system(damping_system)
-                .after(System::Input),
-        )
-        .add_system_set(
-            SystemSet::new()
-                .label(System::Boundary)
-                .with_system(boundary_removal_system)
-                .with_system(bullet_despawn_system)
-                .after(System::Movement),
-        )
-        .add_system(boundary_wrapping_system)
-        .add_system_set(
-            SystemSet::new()
-                .label(System::Collision)
-                .with_system(collision_system::<Bullet, Asteroid>)
-                .with_system(collision_system::<Asteroid, Bullet>)
-                .with_system(collision_system::<Asteroid, Ship>)
-                .with_system(self_collision_system::<Asteroid>)
-                .after(System::Boundary),
-        )
-        .add_system(hit_system.after(System::Collision))
-        .add_system(explosion_system.after(System::Collision))
-        .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
-        .add_system(asteroid_generation_system)
-        .add_system(timed_removal_system.after(System::Movement))
-        .add_system(player_state_system)
-        .add_system(flick_system)
-        .run();
+    let args: Vec<String> = env::args().skip(1).collect();
+    let cfg = ProgramConfig::build(&args).unwrap_or_else(|err| {
+        println!("A problem occured when parsing args: {err}");
+        process::exit(1);
+    });
+
+    let mut app = App::new();
+    app.insert_resource(WindowDescriptor {
+        title: "asteroids-bevy".to_string(),
+        present_mode: PresentMode::Fifo,
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
+        ..default()
+    })
+    .insert_resource(ClearColor(DARK))
+    .insert_resource(Msaa { samples: 4 })
+    .insert_resource(Debug(cfg.debug))
+    .add_event::<AsteroidSpawnEvent>()
+    .add_event::<HitEvent>()
+    .add_event::<PlayerDeathEvent>()
+    .add_event::<ExplosionEvent>()
+    .add_plugins(DefaultPlugins)
+    .add_plugin(ShapePlugin)
+    .add_plugin(RandomPlugin)
+    .add_startup_system(setup_system)
+    .add_system_set(
+        SystemSet::new()
+            .label(System::Input)
+            .with_system(steering_control_system)
+            .with_system(drive_control_system)
+            .with_system(cannon_control_system),
+    )
+    .add_system_set(
+        SystemSet::new()
+            .label(System::Movement)
+            .with_system(movement_system)
+            .with_system(drive_system)
+            .with_system(damping_system)
+            .after(System::Input),
+    )
+    .add_system_set(
+        SystemSet::new()
+            .label(System::Boundary)
+            .with_system(boundary_removal_system)
+            .with_system(bullet_despawn_system)
+            .after(System::Movement),
+    )
+    .add_system(boundary_wrapping_system)
+    .add_system_set(
+        SystemSet::new()
+            .label(System::Collision)
+            .with_system(collision_system::<Bullet, Asteroid>)
+            .with_system(collision_system::<Asteroid, Bullet>)
+            .with_system(collision_system::<Asteroid, Ship>)
+            .with_system(self_collision_system::<Asteroid>)
+            .after(System::Boundary),
+    )
+    .add_system(hit_system.after(System::Collision))
+    .add_system(explosion_system.after(System::Collision))
+    .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
+    .add_system(asteroid_generation_system)
+    .add_system(timed_removal_system.after(System::Movement))
+    .add_system(player_state_system)
+    .add_system(flick_system);
+
+    if cfg.debug {
+        app.add_plugin(WorldInspectorPlugin::new());
+    }
+
+    app.run();
 }
 
 fn player_state_system(
