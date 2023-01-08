@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use crate::asteroid::Damage;
+
 use super::{BoundaryRemoval, Bounding, Velocity, LIGHT, POLY_LINE_WIDTH};
 use bevy::{
     math::{vec2, vec3},
@@ -38,6 +40,7 @@ pub fn cannon_control_system(
                 velocity: Velocity::from(vec2(cannon.0 * direction.x, cannon.0 * direction.y)),
                 bullet: Bullet(Timer::new(Duration::from_millis(1250), false)),
                 boundary_removal: BoundaryRemoval,
+                damage: Damage(10.0),
                 shape: (GeometryBuilder::build_as(
                     &shape,
                     DrawMode::Outlined {
@@ -68,6 +71,7 @@ struct BulletBundle {
     bounding: Bounding,
     boundary_removal: BoundaryRemoval,
     velocity: Velocity,
+    damage: Damage,
     bullet: Bullet,
     #[bundle]
     shape: ShapeBundle,
