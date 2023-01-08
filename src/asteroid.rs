@@ -119,16 +119,16 @@ pub fn asteroid_generation_system(
                 *pos
             };
 
-            let edges = rng.gen_range(7..12);
+            let edges = rng.gen_range(9..15);
 
             let mut points = Vec::new();
             let angle_inc = 360.0 / edges as f32;
 
             for i in 1..=edges {
                 let r = match *radius as usize {
-                    60..=80 => rng.gen_range(60..=(*radius as i32)),
-                    30..=50 => rng.gen_range(30..=(*radius as i32)),
-                    _ => rng.gen_range(10..=(*radius as i32)),
+                    60..=80 => rng.gen_range((*radius as i32 - 30)..=(*radius as i32)),
+                    30..=50 => rng.gen_range((*radius as i32 - 15)..=(*radius as i32)),
+                    _ => rng.gen_range((*radius as i32 - 3)..=(*radius as i32)),
                 } as f32;
 
                 let angle = (angle_inc * i as f32).to_radians();
