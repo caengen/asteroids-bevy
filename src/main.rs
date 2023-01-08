@@ -146,6 +146,7 @@ fn main() {
     .add_system(explosion_system.after(System::Collision))
     .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
     .add_system(asteroid_generation_system)
+    .add_system(spawn_debug_velocities)
     .add_system(timed_removal_system.after(System::Movement))
     .add_system(player_state_system)
     .add_system(flick_system);
@@ -155,6 +156,35 @@ fn main() {
     }
 
     app.run();
+}
+
+#[derive(Debug, Component)]
+pub struct DebugVel;
+
+pub fn spawn_debug_velocities(
+    mut commands: Commands,
+    moving_objects: Query<(Entity, &Velocity, &Transform, Without<DebugVel>)>,
+) {
+    for (entity, velocity, transform, _) in moving_objects.iter() {
+        let line = shapes::Line(
+            vec2(transform.translation.x, transform.translation.y),
+            vec2(
+                transform.translation.x + velocity.0.x,
+                transform.translation.y + velocity.0.y,
+            ),
+        );
+        let debug_line = commands
+            .spawn()
+            .insert_bundle(
+                (GeometryBuilder::build_as(
+                    &line,
+                    DrawMode::Fill(FillMode::color(Color::RED)),
+                    Transform::default(),
+                )),
+            )
+            .id();
+        commands.entity(entity).insert_children(0, &[debug_line]);
+    }
 }
 
 fn player_state_system(
