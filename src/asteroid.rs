@@ -150,7 +150,7 @@ pub fn asteroid_generation_system(
             let center = vec3(pos.x, pos.y, 1.0);
             let health = match *radius as usize {
                 60..=80 => 30.0,
-                40..=50 => 20.0,
+                30..=50 => 20.0,
                 _ => 1.0,
             };
             let vel = match *radius as usize {

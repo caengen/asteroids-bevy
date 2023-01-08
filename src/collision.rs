@@ -109,9 +109,6 @@ pub fn damage_transfer_system<Victim: Component>(
             let Vec3 { x: x2, y: y2, z: _ } = dt.translation;
             if circles_touching(&vt, vb, &dt, db) {
                 let new_health = health.0 - damage.0;
-
-                commands.entity(dealer).despawn();
-
                 if new_health < 0.0 {
                     ev_destruction.send(DestructionEvent { entity: victim });
                     if let Some(Asteroid) = asteroid {
@@ -131,15 +128,18 @@ pub fn damage_transfer_system<Victim: Component>(
                                 });
                             }
                             _ => {
+                                ev_explode.send(ExplosionEvent {
+                                    pos: dt.translation,
+                                    radius: db.0,
+                                    particles: 3..15,
+                                    impact_vel: -(dv.0 / 4.0),
+                                });
                                 // hack. need to add weight to impacters
                                 ev_explode.send(ExplosionEvent {
-                                    pos: vt.translation,
-                                    radius: vb.0,
-                                    particles: 50..100,
-                                    impact_vel: vec2(
-                                        (vv.x / 3.0) + (dv.x / 2.0),
-                                        (vv.y / 3.0) + (dv.y / 2.0),
-                                    ),
+                                    pos: dt.translation,
+                                    radius: db.0,
+                                    particles: 30..70,
+                                    impact_vel: vec2((dv.x / 3.0), (dv.y / 3.0)),
                                 });
                             }
                         }
@@ -147,11 +147,19 @@ pub fn damage_transfer_system<Victim: Component>(
                 } else {
                     health.0 = new_health;
 
+                    ev_explode.send(ExplosionEvent {
+                        pos: dt.translation,
+                        radius: db.0,
+                        particles: 3..15,
+                        impact_vel: -(dv.0 / 4.0),
+                    });
                     commands.entity(victim).insert(Flick {
                         duration: Timer::new(Duration::from_millis(100), false),
                         switch_timer: Timer::new(Duration::from_millis(1), false),
                     });
                 }
+
+                commands.entity(dealer).despawn();
             }
         }
     }
