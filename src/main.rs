@@ -103,9 +103,10 @@ fn main() {
     .insert_resource(Msaa { samples: 4 })
     .insert_resource(Debug(cfg.debug))
     .add_event::<AsteroidSpawnEvent>()
-    .add_event::<HitEvent>()
+    .add_event::<DestructionEvent>()
     .add_event::<PlayerDeathEvent>()
     .add_event::<ExplosionEvent>()
+    .add_event::<DamageTransferEvent>()
     .add_plugins(DefaultPlugins)
     .add_plugin(ShapePlugin)
     .add_plugin(RandomPlugin)
@@ -136,13 +137,12 @@ fn main() {
     .add_system_set(
         SystemSet::new()
             .label(System::Collision)
-            .with_system(collision_system::<Bullet, Asteroid>)
-            .with_system(collision_system::<Asteroid, Bullet>)
-            .with_system(collision_system::<Asteroid, Ship>)
+            .with_system(damage_transfer_system::<Asteroid>)
+            .with_system(kill_collision_system::<Asteroid, Ship>)
             .with_system(self_collision_system::<Asteroid>)
             .after(System::Boundary),
     )
-    .add_system(hit_system.after(System::Collision))
+    .add_system(destruction_system.after(System::Collision))
     .add_system(explosion_system.after(System::Collision))
     .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
     .add_system(asteroid_generation_system)
@@ -256,8 +256,8 @@ fn setup_system(mut commands: Commands) {
         .insert(Damping::from(PLAYER_DAMPING));
 }
 
-fn hit_system(mut commands: Commands, mut ev_hit: EventReader<HitEvent>) {
-    for HitEvent { entity } in ev_hit.iter() {
+fn destruction_system(mut commands: Commands, mut ev_hit: EventReader<DestructionEvent>) {
+    for DestructionEvent { entity } in ev_hit.iter() {
         commands.entity(*entity).despawn_recursive();
     }
 }
@@ -328,8 +328,13 @@ fn timed_removal_system(
     }
 }
 
-pub struct HitEvent {
+pub struct DestructionEvent {
     entity: Entity,
+}
+
+pub struct DamageTransferEvent {
+    victim: Entity,
+    damage: f32,
 }
 
 pub struct PlayerDeathEvent {}

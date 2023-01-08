@@ -12,7 +12,7 @@ use bevy_prototype_lyon::{
     shapes,
 };
 use rand::Rng;
-use std::ops::RangeInclusive;
+use std::{collections::btree_map::Range, ops::RangeInclusive};
 pub const ASTEROID_SIZES: (
     RangeInclusive<f32>,
     RangeInclusive<f32>,
@@ -23,6 +23,10 @@ pub const ASTEROID_LINE_WIDTH: f32 = 3.0;
 
 #[derive(Debug, Component)]
 pub struct Asteroid;
+#[derive(Debug, Component)]
+pub struct Health(pub f32);
+#[derive(Debug, Component)]
+pub struct Damage(pub f32);
 
 pub struct AsteroidSpawnEvent {
     pub pos: Vec2,
@@ -35,6 +39,7 @@ pub struct AsteroidBundle {
     pub bound: Bounding,
     pub wrap: BoundaryWrap,
     pub vel: Velocity,
+    pub health: Health,
     pub vel_limit: SpeedLimit,
     pub ang_vel: AngularVelocity,
     pub marker: Asteroid,
@@ -143,6 +148,11 @@ pub fn asteroid_generation_system(
             };
 
             let center = vec3(pos.x, pos.y, 1.0);
+            let health = match *radius as usize {
+                60..=80 => 30.0,
+                40..=50 => 20.0,
+                _ => 1.0,
+            };
             let vel = match *radius as usize {
                 60..=80 => {
                     let dest = vec3(1.0, 1.0, 1.0);
@@ -183,6 +193,7 @@ pub fn asteroid_generation_system(
                     vel_limit: SpeedLimit::from(200.0),
                     ang_vel: AngularVelocity::from(rng.gen_range(0.1..1.0)),
                     marker: Asteroid,
+                    health: Health(health),
                 })
                 .id();
 

@@ -1,9 +1,14 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, time::Duration};
+
+use crate::{
+    asteroid::{Damage, Health},
+    DamageTransferEvent, Flick,
+};
 
 use super::{
     random::{Random, RandomPlugin},
-    Asteroid, AsteroidSpawnEvent, ExplosionEvent, HitEvent, PlayerDeathEvent, Ship, ShipState,
-    Velocity, ASTEROID_SIZES,
+    Asteroid, AsteroidSpawnEvent, DestructionEvent, ExplosionEvent, PlayerDeathEvent, Ship,
+    ShipState, Velocity, ASTEROID_SIZES,
 };
 use bevy::ecs::component::Component;
 use bevy::math::vec2;
@@ -80,27 +85,88 @@ pub fn self_collision_system<A: Component>(
     }
 }
 
-pub fn collision_system<A: Component, B: Component>(
-    mut ev_hit: EventWriter<HitEvent>,
+pub fn damage_transfer_system<Victim: Component>(
     mut ev_explode: EventWriter<ExplosionEvent>,
+    mut ev_damage: EventWriter<DamageTransferEvent>,
+    mut ev_destruction: EventWriter<DestructionEvent>,
     mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
-    mut ev_player_death: EventWriter<PlayerDeathEvent>,
-    colliders: Query<(Entity, &Transform, &Bounding, &Velocity, With<A>)>,
     mut victims: Query<(
         Entity,
+        &Velocity,
         &Transform,
         &Bounding,
-        &Velocity,
-        With<B>,
+        &mut Health,
         Option<&Asteroid>,
-        Option<&mut Ship>,
+        With<Victim>,
     )>,
+    mut dealers: Query<(Entity, &Velocity, &Transform, &Bounding, &Damage)>,
     mut rng: Local<Random>,
+    mut commands: Commands,
+) {
+    for (victim, vv, vt, vb, mut health, asteroid, _) in victims.iter_mut() {
+        let Vec3 { x: x1, y: y1, z: _ } = vt.translation;
+        for (dealer, dv, dt, db, damage) in dealers.iter_mut() {
+            let Vec3 { x: x2, y: y2, z: _ } = dt.translation;
+            if circles_touching(&vt, vb, &dt, db) {
+                let new_health = health.0 - damage.0;
+
+                commands.entity(dealer).despawn();
+
+                if new_health < 0.0 {
+                    ev_destruction.send(DestructionEvent { entity: victim });
+                    if let Some(Asteroid) = asteroid {
+                        match vb.0 as usize {
+                            60..=80 => {
+                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
+                                    amount: 2,
+                                    pos: vec2(vt.translation.x, vt.translation.y),
+                                    radius: rng.gen_range(ASTEROID_SIZES.1),
+                                });
+                            }
+                            30..=50 => {
+                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
+                                    amount: 3,
+                                    pos: vec2(vt.translation.x, vt.translation.y),
+                                    radius: rng.gen_range(ASTEROID_SIZES.2),
+                                });
+                            }
+                            _ => {
+                                // hack. need to add weight to impacters
+                                ev_explode.send(ExplosionEvent {
+                                    pos: vt.translation,
+                                    radius: vb.0,
+                                    particles: 50..100,
+                                    impact_vel: vec2(
+                                        (vv.x / 3.0) + (dv.x / 2.0),
+                                        (vv.y / 3.0) + (dv.y / 2.0),
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                } else {
+                    health.0 = new_health;
+
+                    commands.entity(victim).insert(Flick {
+                        duration: Timer::new(Duration::from_millis(100), false),
+                        switch_timer: Timer::new(Duration::from_millis(1), false),
+                    });
+                }
+            }
+        }
+    }
+}
+
+pub fn kill_collision_system<A: Component, B: Component>(
+    mut ev_explode: EventWriter<ExplosionEvent>,
+    mut ev_player_death: EventWriter<PlayerDeathEvent>,
+    colliders: Query<(Entity, &Transform, &Bounding, &Velocity, With<A>)>,
+    mut victims: Query<(Entity, &Transform, &Bounding, With<B>, Option<&mut Ship>)>,
 ) {
     for (_collider, at, ab, avel, _) in colliders.iter() {
         let Vec3 { x: x1, y: y1, z: _ } = at.translation;
         let r1 = ab.0;
-        for (victim, bt, bb, bvel, _, asteroid, ship) in victims.iter_mut() {
+        for (victim, bt, bb, _, ship) in victims.iter_mut() {
             let Vec3 { x: x2, y: y2, z: _ } = bt.translation;
             let r2 = bb.0;
             if circles_touching(&at, ab, &bt, bb) {
@@ -113,38 +179,6 @@ pub fn collision_system<A: Component, B: Component>(
                             impact_vel: vec2(avel.x, avel.y),
                         });
                         ev_player_death.send(PlayerDeathEvent {});
-                    }
-                } else {
-                    ev_hit.send(HitEvent { entity: victim });
-                    if let Some(Asteroid) = asteroid {
-                        match bb.0 as usize {
-                            60..=80 => {
-                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
-                                    amount: 2,
-                                    pos: vec2(bt.translation.x, bt.translation.y),
-                                    radius: rng.gen_range(ASTEROID_SIZES.1),
-                                });
-                            }
-                            30..=50 => {
-                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
-                                    amount: 3,
-                                    pos: vec2(bt.translation.x, bt.translation.y),
-                                    radius: rng.gen_range(ASTEROID_SIZES.2),
-                                });
-                            }
-                            _ => {
-                                // hack. need to add weight to impacters
-                                ev_explode.send(ExplosionEvent {
-                                    pos: bt.translation,
-                                    radius: r2,
-                                    particles: 50..100,
-                                    impact_vel: vec2(
-                                        bvel.x + (avel.x / 3.0),
-                                        bvel.y + (avel.y / 3.0),
-                                    ),
-                                });
-                            }
-                        }
                     }
                 }
             }
