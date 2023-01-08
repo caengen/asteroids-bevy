@@ -111,6 +111,7 @@ fn main() {
     .add_plugin(ShapePlugin)
     .add_plugin(RandomPlugin)
     .add_startup_system(setup_system)
+    .add_startup_system(setup_stars)
     .add_system_set(
         SystemSet::new()
             .label(System::Input)
@@ -217,6 +218,62 @@ fn player_state_system(
                 }
             }
         }
+    }
+}
+
+#[derive(Bundle)]
+struct StarBundle {
+    #[bundle]
+    shape: ShapeBundle,
+    // flick: Flick, blink system?
+}
+
+fn setup_stars(mut commands: Commands, window: Res<WindowDescriptor>, mut rng: Local<Random>) {
+    let h = window.height / 2.0;
+    let w = window.width / 2.0;
+
+    let size = rng.gen_range(0..=10);
+    let radius = match size {
+        0..=3 => rng.gen_range(ASTEROID_SIZES.0),
+        4..=6 => rng.gen_range(ASTEROID_SIZES.1),
+        7..=9 => rng.gen_range(ASTEROID_SIZES.2),
+        _ => rng.gen_range(ASTEROID_SIZES.0),
+    };
+
+    let side = rng.gen_range(0..=3);
+    let pos = match side {
+        0 => vec2(-w, rng.gen_range(-h..h)),
+        1 => vec2(w, rng.gen_range(-h..h)),
+        2 => vec2(rng.gen_range(-w..w), -h),
+        _ => vec2(rng.gen_range(-w..w), h),
+    };
+
+    for i in 0..200 {
+        let pos = vec2(rng.gen_range(-w..w), rng.gen_range(-h..h));
+
+        let shape = shapes::Circle {
+            radius: rng.gen_range(0.01..CANNON_BULLET_RADIUS),
+            ..Default::default()
+        };
+
+        let flick = rng.gen_range(3000..10000);
+        let _star = commands.spawn().insert_bundle(StarBundle {
+            // flick: Flick {
+            //     duration: Timer::new(Duration::from_millis(flick + 100), true),
+            //     switch_timer: Timer::new(Duration::from_millis(flick), true),
+            // },
+            shape: (GeometryBuilder::build_as(
+                &shape,
+                DrawMode::Outlined {
+                    outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH),
+                    fill_mode: FillMode::color(LIGHT),
+                },
+                Transform {
+                    translation: vec3(pos.x, pos.y, 0.0),
+                    ..Default::default()
+                },
+            )),
+        });
     }
 }
 
