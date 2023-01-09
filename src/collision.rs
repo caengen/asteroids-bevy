@@ -7,7 +7,7 @@ use crate::{
 
 use super::{
     random::{Random, RandomPlugin},
-    Asteroid, AsteroidSpawnEvent, DestructionEvent, ExplosionEvent, PlayerDeathEvent, Ship,
+    Asteroid, AsteroidSpawnEvent, DestructionEvent, GrainSpawnEvent, PlayerDeathEvent, Ship,
     ShipState, Velocity, ASTEROID_SIZES,
 };
 use bevy::ecs::component::Component;
@@ -86,7 +86,7 @@ pub fn self_collision_system<A: Component>(
 }
 
 pub fn damage_transfer_system<Victim: Component>(
-    mut ev_explode: EventWriter<ExplosionEvent>,
+    mut ev_explode: EventWriter<GrainSpawnEvent>,
     mut ev_damage: EventWriter<DamageTransferEvent>,
     mut ev_destruction: EventWriter<DestructionEvent>,
     mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
@@ -128,14 +128,14 @@ pub fn damage_transfer_system<Victim: Component>(
                                 });
                             }
                             _ => {
-                                ev_explode.send(ExplosionEvent {
+                                ev_explode.send(GrainSpawnEvent {
                                     pos: dt.translation,
                                     radius: db.0,
                                     particles: 3..15,
                                     impact_vel: -(dv.0 / 4.0),
                                 });
                                 // hack. need to add weight to impacters
-                                ev_explode.send(ExplosionEvent {
+                                ev_explode.send(GrainSpawnEvent {
                                     pos: dt.translation,
                                     radius: db.0,
                                     particles: 30..70,
@@ -147,14 +147,14 @@ pub fn damage_transfer_system<Victim: Component>(
                 } else {
                     health.0 = new_health;
 
-                    ev_explode.send(ExplosionEvent {
+                    ev_explode.send(GrainSpawnEvent {
                         pos: dt.translation,
                         radius: db.0,
                         particles: 3..15,
                         impact_vel: -(dv.0 / 4.0),
                     });
                     commands.entity(victim).insert(Flick {
-                        duration: Timer::new(Duration::from_millis(100), false),
+                        duration: Timer::new(Duration::from_millis(75), false),
                         switch_timer: Timer::new(Duration::from_millis(1), false),
                     });
                 }
@@ -166,7 +166,7 @@ pub fn damage_transfer_system<Victim: Component>(
 }
 
 pub fn kill_collision_system<A: Component, B: Component>(
-    mut ev_explode: EventWriter<ExplosionEvent>,
+    mut ev_explode: EventWriter<GrainSpawnEvent>,
     mut ev_player_death: EventWriter<PlayerDeathEvent>,
     colliders: Query<(Entity, &Transform, &Bounding, &Velocity, With<A>)>,
     mut victims: Query<(Entity, &Transform, &Bounding, With<B>, Option<&mut Ship>)>,
@@ -180,7 +180,7 @@ pub fn kill_collision_system<A: Component, B: Component>(
             if circles_touching(&at, ab, &bt, bb) {
                 if let Some(mut ship) = ship {
                     if matches!(ship.state, ShipState::Alive) {
-                        ev_explode.send(ExplosionEvent {
+                        ev_explode.send(GrainSpawnEvent {
                             pos: bt.translation,
                             radius: r2,
                             particles: 150..200,

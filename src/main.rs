@@ -18,6 +18,7 @@ use boundary::*;
 use collision::*;
 use derive_more::From;
 use movement::*;
+use particles::*;
 use rand::Rng;
 use random::{Random, RandomPlugin};
 use std::{default::Default, ops::Range, time::Duration};
@@ -28,6 +29,7 @@ mod asteroid;
 mod boundary;
 mod collision;
 mod movement;
+mod particles;
 mod random;
 mod weapons;
 
@@ -38,14 +40,12 @@ pub const SCREEN: Vec2 = Vec2::from_array([SCREEN_WIDTH, SCREEN_HEIGHT]);
 pub const GAME_WIDTH: f32 = 240.0;
 // pub const PIXELS_PER_METER: f32 = 30.0 / SCALE;
 
-pub const PARTICLE_RADIUS: f32 = 0.3;
-
 pub const PLAYER_SIZE: f32 = 20.0;
 pub const PLAYER_DAMPING: f32 = 0.992;
-pub const PARTICLE_DAMPING: f32 = 0.992;
 pub const POLY_LINE_WIDTH: f32 = 1.0;
 
 pub const DARK: Color = Color::rgb(0.191, 0.184, 0.156);
+pub const ESCURO: Color = Color::rgb(0.382, 0.368, 0.312);
 pub const LIGHT: Color = Color::rgb(0.852, 0.844, 0.816);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, SystemLabel)]
@@ -54,6 +54,7 @@ enum System {
     Input,
     Movement,
     Boundary,
+    Particles,
     Spawning,
 }
 
@@ -105,7 +106,7 @@ fn main() {
     .add_event::<AsteroidSpawnEvent>()
     .add_event::<DestructionEvent>()
     .add_event::<PlayerDeathEvent>()
-    .add_event::<ExplosionEvent>()
+    .add_event::<GrainSpawnEvent>()
     .add_event::<DamageTransferEvent>()
     .add_plugins(DefaultPlugins)
     .add_plugin(ShapePlugin)
@@ -143,8 +144,13 @@ fn main() {
             .with_system(self_collision_system::<Asteroid>)
             .after(System::Boundary),
     )
+    .add_system_set(
+        SystemSet::new()
+            .label(System::Particles)
+            .with_system(grain_spawn_system)
+            .after(System::Collision),
+    )
     .add_system(destruction_system.after(System::Collision))
-    .add_system(explosion_system.after(System::Collision))
     .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
     .add_system(asteroid_generation_system)
     .add_system(timed_removal_system.after(System::Movement))
@@ -256,7 +262,8 @@ fn setup_stars(mut commands: Commands, window: Res<WindowDescriptor>, mut rng: L
             ..Default::default()
         };
 
-        let flick = rng.gen_range(3000..10000);
+        // let flick = rng.gen_range(3000..10000);
+        let cor = if rng.gen_ratio(1, 2) { LIGHT } else { ESCURO };
         let _star = commands.spawn().insert_bundle(StarBundle {
             // flick: Flick {
             //     duration: Timer::new(Duration::from_millis(flick + 100), true),
@@ -265,8 +272,8 @@ fn setup_stars(mut commands: Commands, window: Res<WindowDescriptor>, mut rng: L
             shape: (GeometryBuilder::build_as(
                 &shape,
                 DrawMode::Outlined {
-                    outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH),
-                    fill_mode: FillMode::color(LIGHT),
+                    outline_mode: StrokeMode::new(cor, POLY_LINE_WIDTH),
+                    fill_mode: FillMode::color(cor),
                 },
                 Transform {
                     translation: vec3(pos.x, pos.y, 0.0),
@@ -318,58 +325,6 @@ fn destruction_system(mut commands: Commands, mut ev_hit: EventReader<Destructio
         commands.entity(*entity).despawn_recursive();
     }
 }
-fn explosion_system(
-    mut commands: Commands,
-    mut rng: Local<Random>,
-    mut ev_explode: EventReader<ExplosionEvent>,
-) {
-    for ExplosionEvent {
-        pos,
-        radius,
-        particles,
-        impact_vel,
-    } in ev_explode.iter()
-    {
-        let shape = shapes::Circle {
-            radius: PARTICLE_RADIUS,
-            ..Default::default()
-        };
-
-        let particles = rng.gen_range(particles.start..particles.end);
-
-        for i in 1..=particles {
-            let angle = ((i * (360 / particles)) as f32).to_radians();
-            let r = rng.gen_range((*radius * 0.1)..(*radius * 0.9));
-            let particle_pos = vec3(r * f32::sin(angle), r * f32::cos(angle), 1.0);
-            let force = rng.gen_range(20.0..90.0);
-            let vel = vec2(
-                impact_vel.x + f32::sin(angle) * force,
-                impact_vel.y + f32::cos(angle) * force,
-            );
-            commands
-                .spawn()
-                .insert_bundle(
-                    (GeometryBuilder::build_as(
-                        &shape,
-                        DrawMode::Outlined {
-                            outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH),
-                            fill_mode: FillMode::color(LIGHT),
-                        },
-                        Transform {
-                            translation: vec3(pos.x + particle_pos.x, pos.y + particle_pos.y, 1.0),
-                            ..Default::default()
-                        },
-                    )),
-                )
-                .insert(TimedRemoval(Timer::new(
-                    Duration::from_millis(rng.gen_range(300..1500)),
-                    false,
-                )))
-                .insert(Velocity::from(vel))
-                .insert(Damping::from(PARTICLE_DAMPING));
-        }
-    }
-}
 
 fn timed_removal_system(
     mut commands: Commands,
@@ -395,12 +350,6 @@ pub struct DamageTransferEvent {
 }
 
 pub struct PlayerDeathEvent {}
-pub struct ExplosionEvent {
-    pub pos: Vec3,
-    pub radius: f32,
-    pub particles: Range<i32>,
-    pub impact_vel: Vec2,
-}
 
 pub fn polygon(center: Vec2, r: f32, amount: i32) -> Vec<Vec2> {
     let mut points = Vec::new();
