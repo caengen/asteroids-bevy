@@ -161,7 +161,7 @@ pub fn asteroid_generation_system(
                     let force = rng.gen_range(10.0..50.00);
                     vec2(force * direction.x, force * direction.y)
                 }
-                40..=50 => {
+                30..=50 => {
                     let direction =
                         Quat::from_rotation_z((rng.gen_range(0..360) as f32).to_radians())
                             * -Vec3::Y; //TODO: find out why this works

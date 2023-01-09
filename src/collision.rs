@@ -2,13 +2,14 @@ use std::{f32::consts::PI, time::Duration};
 
 use crate::{
     asteroid::{Damage, Health},
+    particles::BallParticleSpawnEvent,
     DamageTransferEvent, Flick,
 };
 
 use super::{
     random::{Random, RandomPlugin},
-    Asteroid, AsteroidSpawnEvent, DestructionEvent, GrainSpawnEvent, PlayerDeathEvent, Ship,
-    ShipState, Velocity, ASTEROID_SIZES,
+    Asteroid, AsteroidSpawnEvent, DestructionEvent, GrainParticleSpawnEvent, PlayerDeathEvent,
+    Ship, ShipState, Velocity, ASTEROID_SIZES,
 };
 use bevy::ecs::component::Component;
 use bevy::math::vec2;
@@ -86,8 +87,8 @@ pub fn self_collision_system<A: Component>(
 }
 
 pub fn damage_transfer_system<Victim: Component>(
-    mut ev_explode: EventWriter<GrainSpawnEvent>,
-    mut ev_damage: EventWriter<DamageTransferEvent>,
+    mut ev_grain: EventWriter<GrainParticleSpawnEvent>,
+    mut ev_ball_particles: EventWriter<BallParticleSpawnEvent>,
     mut ev_destruction: EventWriter<DestructionEvent>,
     mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
     mut victims: Query<(
@@ -114,6 +115,14 @@ pub fn damage_transfer_system<Victim: Component>(
                     if let Some(Asteroid) = asteroid {
                         match vb.0 as usize {
                             60..=80 => {
+                                // ev_ball_particles.send(BallParticleSpawnEvent {
+                                //     pos: vt.translation,
+                                //     spawn_radius: vb.0 * 1.25,
+                                //     ball_radius: 30.0,
+                                //     particles: 20..30,
+                                //     delay: 30,
+                                //     dir_vel: dv.0,
+                                // });
                                 ev_asteroid_spawn.send(AsteroidSpawnEvent {
                                     amount: 2,
                                     pos: vec2(vt.translation.x, vt.translation.y),
@@ -121,6 +130,14 @@ pub fn damage_transfer_system<Victim: Component>(
                                 });
                             }
                             30..=50 => {
+                                // ev_ball_particles.send(BallParticleSpawnEvent {
+                                //     pos: vt.translation,
+                                //     spawn_radius: vb.0 * 1.25,
+                                //     ball_radius: 18.0,
+                                //     particles: 10..20,
+                                //     delay: 30,
+                                //     dir_vel: dv.0,
+                                // });
                                 ev_asteroid_spawn.send(AsteroidSpawnEvent {
                                     amount: 3,
                                     pos: vec2(vt.translation.x, vt.translation.y),
@@ -128,16 +145,16 @@ pub fn damage_transfer_system<Victim: Component>(
                                 });
                             }
                             _ => {
-                                ev_explode.send(GrainSpawnEvent {
+                                ev_grain.send(GrainParticleSpawnEvent {
                                     pos: dt.translation,
-                                    radius: db.0,
+                                    spawn_radius: db.0,
                                     particles: 3..15,
                                     impact_vel: -(dv.0 / 4.0),
                                 });
                                 // hack. need to add weight to impacters
-                                ev_explode.send(GrainSpawnEvent {
+                                ev_grain.send(GrainParticleSpawnEvent {
                                     pos: dt.translation,
-                                    radius: db.0,
+                                    spawn_radius: db.0,
                                     particles: 30..70,
                                     impact_vel: vec2((dv.x / 3.0), (dv.y / 3.0)),
                                 });
@@ -147,9 +164,9 @@ pub fn damage_transfer_system<Victim: Component>(
                 } else {
                     health.0 = new_health;
 
-                    ev_explode.send(GrainSpawnEvent {
+                    ev_grain.send(GrainParticleSpawnEvent {
                         pos: dt.translation,
-                        radius: db.0,
+                        spawn_radius: db.0,
                         particles: 3..15,
                         impact_vel: -(dv.0 / 4.0),
                     });
@@ -166,7 +183,7 @@ pub fn damage_transfer_system<Victim: Component>(
 }
 
 pub fn kill_collision_system<A: Component, B: Component>(
-    mut ev_explode: EventWriter<GrainSpawnEvent>,
+    mut ev_explode: EventWriter<GrainParticleSpawnEvent>,
     mut ev_player_death: EventWriter<PlayerDeathEvent>,
     colliders: Query<(Entity, &Transform, &Bounding, &Velocity, With<A>)>,
     mut victims: Query<(Entity, &Transform, &Bounding, With<B>, Option<&mut Ship>)>,
@@ -180,9 +197,9 @@ pub fn kill_collision_system<A: Component, B: Component>(
             if circles_touching(&at, ab, &bt, bb) {
                 if let Some(mut ship) = ship {
                     if matches!(ship.state, ShipState::Alive) {
-                        ev_explode.send(GrainSpawnEvent {
+                        ev_explode.send(GrainParticleSpawnEvent {
                             pos: bt.translation,
-                            radius: r2,
+                            spawn_radius: r2,
                             particles: 150..200,
                             impact_vel: vec2(avel.x, avel.y),
                         });

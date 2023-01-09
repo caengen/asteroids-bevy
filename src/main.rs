@@ -55,6 +55,7 @@ enum System {
     Movement,
     Boundary,
     Particles,
+    Despawning,
     Spawning,
 }
 
@@ -106,7 +107,8 @@ fn main() {
     .add_event::<AsteroidSpawnEvent>()
     .add_event::<DestructionEvent>()
     .add_event::<PlayerDeathEvent>()
-    .add_event::<GrainSpawnEvent>()
+    .add_event::<GrainParticleSpawnEvent>()
+    .add_event::<BallParticleSpawnEvent>()
     .add_event::<DamageTransferEvent>()
     .add_plugins(DefaultPlugins)
     .add_plugin(ShapePlugin)
@@ -148,12 +150,20 @@ fn main() {
         SystemSet::new()
             .label(System::Particles)
             .with_system(grain_spawn_system)
+            .with_system(ball_spawn_system)
             .after(System::Collision),
     )
     .add_system(destruction_system.after(System::Collision))
     .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
     .add_system(asteroid_generation_system)
-    .add_system(timed_removal_system.after(System::Movement))
+    .add_system(darken_system.before(System::Despawning))
+    .add_system_set(
+        SystemSet::new()
+            .label(System::Despawning)
+            .with_system(timed_removal_system)
+            .after(System::Movement),
+    )
+    .add_system(delayed_spawn_system.before(System::Despawning))
     .add_system(player_state_system)
     .add_system(flick_system);
 
@@ -329,13 +339,28 @@ fn destruction_system(mut commands: Commands, mut ev_hit: EventReader<Destructio
 fn timed_removal_system(
     mut commands: Commands,
     time: Res<Time>,
-    mut query: Query<(Entity, &mut TimedRemoval)>,
+    mut query: Query<(Entity, &mut TimedRemoval, Without<DelayedVisibility>)>,
 ) {
-    for (entity, mut removal) in query.iter_mut() {
+    for (entity, mut removal, _) in query.iter_mut() {
         removal.0.tick(time.delta());
 
         if removal.0.finished() {
             commands.entity(entity).despawn();
+        }
+    }
+}
+
+fn delayed_spawn_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut DelayedVisibility, &mut Visibility)>,
+) {
+    for (entity, mut delay, mut visibility) in query.iter_mut() {
+        delay.0.tick(time.delta());
+
+        if delay.0.finished() {
+            commands.entity(entity).remove::<DelayedVisibility>();
+            visibility.is_visible = true;
         }
     }
 }
@@ -421,6 +446,11 @@ pub struct Ship {
 
 #[derive(Debug, Component)]
 pub struct TimedRemoval(pub Timer);
+
+#[derive(Debug, Component)]
+pub struct Darken(pub Timer);
+#[derive(Debug, Component)]
+pub struct DelayedVisibility(pub Timer);
 
 // impl Ship {
 //     fn alive() -> Self {
