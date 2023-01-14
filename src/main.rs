@@ -191,7 +191,7 @@ fn player_state_system(
                         .remove::<Flick>()
                         .insert(Bounding::from(PLAYER_SIZE / 2.0))
                         .insert(SteeringControl::from(Angle::degrees(180.0)))
-                        .insert(Drive::new(3.0))
+                        .insert(Drive::new(3.0, 1.5))
                         .insert(Cannon::from(400.0))
                         .insert(Velocity::default())
                         .insert(AngularVelocity::default());

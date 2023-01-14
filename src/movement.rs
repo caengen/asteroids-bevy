@@ -14,17 +14,25 @@ pub struct Damping(pub f32);
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 pub struct SpeedLimit(pub f32);
+#[derive(Debug)]
+pub enum DriveMode {
+    Off,
+    Propulsion,
+    Reverse,
+}
 
 #[derive(Debug, Component)]
 pub struct Drive {
-    pub on: bool,
-    pub force: f32,
+    pub mode: DriveMode,
+    pub propulsion_force: f32,
+    pub reverse_force: f32,
 }
 impl Drive {
-    pub fn new(force: f32) -> Self {
+    pub fn new(propulsion_force: f32, reverse_force: f32) -> Self {
         Drive {
-            on: false,
-            force: force,
+            mode: DriveMode::Off,
+            propulsion_force,
+            reverse_force,
         }
     }
 }
@@ -55,21 +63,33 @@ pub fn damping_system(mut query: Query<(&mut Velocity, &Damping)>) {
 
 pub fn drive_control_system(mut query: Query<&mut Drive>, keyboard: Res<Input<KeyCode>>) {
     for mut drive in query.iter_mut() {
-        drive.on = keyboard.pressed(KeyCode::Up);
+        drive.mode = if keyboard.pressed(KeyCode::Up) {
+            DriveMode::Propulsion
+        } else if keyboard.pressed(KeyCode::Down) {
+            DriveMode::Reverse
+        } else {
+            DriveMode::Off
+        }
     }
 }
 
 pub fn drive_system(mut query: Query<(&mut Velocity, &Transform, &Drive)>) {
     for (mut velocity, transform, drive) in query.iter_mut() {
-        if !drive.on {
-            return;
+        match drive.mode {
+            DriveMode::Off => return,
+            DriveMode::Propulsion => {
+                // what the fuck is this quat shit
+                // changed from Vec3::X to -Vec::Y and now this shit works wtf?
+                let direction = transform.rotation * -Vec3::Y;
+                velocity.x += direction.x * drive.propulsion_force;
+                velocity.y += direction.y * drive.propulsion_force;
+            }
+            DriveMode::Reverse => {
+                let direction = transform.rotation * -Vec3::Y;
+                velocity.x += -(direction.x * drive.reverse_force);
+                velocity.y += -(direction.y * drive.reverse_force);
+            }
         }
-
-        // what the fuck is this quat shit
-        // changed from Vec3::X to -Vec::Y and now this shit works wtf?
-        let direction = transform.rotation * -Vec3::Y;
-        velocity.x += direction.x * drive.force;
-        velocity.y += direction.y * drive.force;
     }
 }
 
