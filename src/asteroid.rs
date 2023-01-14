@@ -288,6 +288,12 @@ pub fn asteroid_generation_system(
 
             let angle_inc = 360.0 / edges as f32;
 
+            let (min, max) = match *radius as usize {
+                60..=80 => (60.0, 80.0),
+                30..=50 => (30.0, 50.0),
+                _ => (10.0, 20.0),
+            };
+
             for i in 1..=edges {
                 let r = match *radius as usize {
                     60..=80 => rng.gen_range((*radius as i32 - 30)..=(*radius as i32)),
@@ -304,7 +310,7 @@ pub fn asteroid_generation_system(
                 .map(|p| ((p.x).powi(2) + (p.y).powi(2)).sqrt())
                 .sum::<f32>()
                 / p_len as f32;
-            let bounding = average;
+            let bounding = average.clamp(min, max);
             let shape = shapes::Polygon {
                 points: points.clone(),
                 closed: true,
