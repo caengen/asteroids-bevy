@@ -1,7 +1,6 @@
 use super::{
-    random::{Random, RandomPlugin},
-    AngularVelocity, BoundaryWrap, Bounding, Debug, ShapeBundle, SpeedLimit, Velocity, DARK, LIGHT,
-    POLY_LINE_WIDTH,
+    random::Random, AngularVelocity, BoundaryWrap, Bounding, Debug, ShapeBundle, SpeedLimit,
+    Velocity, DARK, LIGHT, POLY_LINE_WIDTH,
 };
 use bevy::{
     math::{vec2, vec3},
@@ -12,14 +11,12 @@ use bevy_prototype_lyon::{
     shapes,
 };
 use rand::Rng;
-use std::{collections::btree_map::Range, ops::RangeInclusive};
+use std::ops::RangeInclusive;
 pub const ASTEROID_SIZES: (
     RangeInclusive<f32>,
     RangeInclusive<f32>,
     RangeInclusive<f32>,
 ) = (60.0..=80.0, 30.0..=50.00, 10.0..=20.0);
-
-pub const ASTEROID_LINE_WIDTH: f32 = 3.0;
 
 #[derive(Debug, Component)]
 pub struct Asteroid;
@@ -34,6 +31,15 @@ pub struct AsteroidSpawnEvent {
     pub amount: i32,
 }
 
+pub struct AsteroidSplitEvent {
+    pub parent_points: Vec<Vec2>,
+    pub pos: Vec2,
+    pub radius: f32,
+    pub amount: f32,
+}
+
+#[derive(Debug, Component, Clone, Deref)]
+pub struct Points(pub Vec<Vec2>);
 #[derive(Bundle)]
 pub struct AsteroidBundle {
     pub bound: Bounding,
@@ -43,8 +49,45 @@ pub struct AsteroidBundle {
     pub vel_limit: SpeedLimit,
     pub ang_vel: AngularVelocity,
     pub marker: Asteroid,
+    pub points: Points,
     #[bundle]
     pub shape: ShapeBundle,
+}
+
+pub fn velocity(center: &Vec2, radius: &f32, rng: &mut Random) -> Velocity {
+    let v = match *radius as usize {
+        60..=80 => {
+            let dest = vec2(1.0, 1.0);
+            let angle = center.angle_between(dest);
+            let direction = Quat::from_rotation_z(angle) * -Vec3::Y; //TODO: find out why this works
+            let force = rng.gen_range(10.0..50.00);
+            vec2(force * direction.x, force * direction.y)
+        }
+        30..=50 => {
+            let direction =
+                Quat::from_rotation_z((rng.gen_range(0..360) as f32).to_radians()) * -Vec3::Y; //TODO: find out why this works
+            let force = rng.gen_range(20.0..60.00);
+            vec2(force * direction.x, force * direction.y)
+        }
+        _ => {
+            let direction =
+                Quat::from_rotation_z((rng.gen_range(0..360) as f32).to_radians()) * -Vec3::Y; //TODO: find out why this works
+            let force = rng.gen_range(30.0..70.00);
+            vec2(force * direction.x, force * direction.y)
+        }
+    };
+
+    Velocity::from(v)
+}
+
+pub fn health(radius: &f32) -> Health {
+    let h = match *radius as usize {
+        60..=80 => 30.0,
+        30..=50 => 20.0,
+        _ => 1.0,
+    };
+
+    Health(h)
 }
 
 pub fn asteroid_spawn_system(
@@ -96,6 +139,131 @@ pub fn asteroid_spawn_system(
     });
 }
 
+pub fn asteroid_split_system(
+    mut commands: Commands,
+    mut rng: Local<Random>,
+    mut ev_asteroid_split: EventReader<AsteroidSplitEvent>,
+    debug: Res<Debug>,
+) {
+    for AsteroidSplitEvent {
+        parent_points: pp,
+        pos,
+        radius,
+        amount,
+    } in ev_asteroid_split.iter()
+    {
+        let len = pp.len() as f32;
+        let num = (len / amount).floor() as usize;
+        let a = &pp[..=num];
+        let b = &pp[num..=(num * 2)];
+        let c = &pp[(num * 2)..];
+        let center_point = vec2(
+            pp.iter().map(|p| p.x).sum::<f32>() / len,
+            pp.iter().map(|p| p.y).sum::<f32>() / len,
+        );
+
+        //[&c[0], a.to_vec(), &b[0]].concat()
+
+        // let z = c[0].clone();
+        let mut a_points = vec![center_point.clone(), c[c.len() - 1]];
+        a_points.extend_from_slice(a);
+        a_points.push(b[0]);
+        let a_shape = shapes::Polygon {
+            points: a_points.clone(),
+            closed: true,
+        };
+
+        let mut b_points = vec![center_point.clone(), a[a.len() - 1]];
+        b_points.extend_from_slice(b);
+        b_points.push(c[0]);
+        let b_shape = shapes::Polygon {
+            points: b_points.clone(),
+            closed: true,
+        };
+
+        let mut c_points = vec![center_point.clone(), b[b.len() - 1]];
+        c_points.extend_from_slice(c);
+        c_points.push(a[0]);
+        let c_shape = shapes::Polygon {
+            points: c_points.clone(),
+            closed: true,
+        };
+
+        let shapes = [
+            (a_shape, a_points),
+            (b_shape, b_points),
+            (c_shape, c_points),
+        ];
+
+        for (shape, points) in shapes.iter() {
+            let centroid = vec2(
+                points.iter().map(|p| p.x).sum::<f32>() / len,
+                points.iter().map(|p| p.y).sum::<f32>() / len,
+            );
+
+            let bounding = points
+                .iter()
+                .map(|p| ((p.x).powi(2) + (p.y).powi(2)).sqrt())
+                .sum::<f32>()
+                / points.len() as f32;
+
+            let asteroid = commands
+                .spawn_bundle(AsteroidBundle {
+                    shape: (GeometryBuilder::build_as(
+                        shape,
+                        DrawMode::Outlined {
+                            outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH * 1.5),
+                            fill_mode: FillMode::color(DARK),
+                        },
+                        Transform::default().with_translation(vec3(
+                            if centroid.x.is_sign_positive() {
+                                pos.x - centroid.x
+                            } else {
+                                pos.x + centroid.x
+                            },
+                            if centroid.y.is_sign_positive() {
+                                pos.y - centroid.y
+                            } else {
+                                pos.y + centroid.y
+                            },
+                            1.0,
+                        )),
+                    )),
+                    bound: Bounding::from(bounding),
+                    wrap: BoundaryWrap,
+                    vel: velocity(&centroid, &bounding, &mut rng),
+                    vel_limit: SpeedLimit::from(200.0),
+                    ang_vel: AngularVelocity::from(rng.gen_range(0.1..1.0)),
+                    marker: Asteroid,
+                    points: Points(points.clone()),
+                    health: health(&bounding),
+                })
+                .id();
+
+            if debug.0 {
+                let d_circle = shapes::Circle {
+                    radius: bounding,
+                    ..Default::default()
+                };
+                let debug_bound = commands
+                    .spawn()
+                    .insert_bundle(
+                        (GeometryBuilder::build_as(
+                            &d_circle,
+                            DrawMode::Outlined {
+                                outline_mode: StrokeMode::new(Color::RED, POLY_LINE_WIDTH * 1.5),
+                                fill_mode: FillMode::color(DARK),
+                            },
+                            Transform::default(),
+                        )),
+                    )
+                    .id();
+                commands.entity(asteroid).insert_children(0, &[debug_bound]);
+            }
+        }
+    }
+}
+
 pub fn asteroid_generation_system(
     mut commands: Commands,
     mut rng: Local<Random>,
@@ -108,6 +276,7 @@ pub fn asteroid_generation_system(
         radius,
     } in ev_asteroid_spawn.iter()
     {
+        let mut points = Vec::new();
         for i in 0..*amount {
             let pos = if *amount > 0 {
                 let angle = ((360 / *amount * i) as f32).to_radians();
@@ -121,7 +290,6 @@ pub fn asteroid_generation_system(
 
             let edges = rng.gen_range(9..15);
 
-            let mut points = Vec::new();
             let angle_inc = 360.0 / edges as f32;
 
             for i in 1..=edges {
@@ -143,39 +311,11 @@ pub fn asteroid_generation_system(
                 / p_len as f32;
             let bounding = average;
             let shape = shapes::Polygon {
-                points,
+                points: points.clone(),
                 closed: true,
             };
 
             let center = vec3(pos.x, pos.y, 1.0);
-            let health = match *radius as usize {
-                60..=80 => 30.0,
-                30..=50 => 20.0,
-                _ => 1.0,
-            };
-            let vel = match *radius as usize {
-                60..=80 => {
-                    let dest = vec3(1.0, 1.0, 1.0);
-                    let angle = center.angle_between(dest);
-                    let direction = Quat::from_rotation_z(angle) * -Vec3::Y; //TODO: find out why this works
-                    let force = rng.gen_range(10.0..50.00);
-                    vec2(force * direction.x, force * direction.y)
-                }
-                30..=50 => {
-                    let direction =
-                        Quat::from_rotation_z((rng.gen_range(0..360) as f32).to_radians())
-                            * -Vec3::Y; //TODO: find out why this works
-                    let force = rng.gen_range(20.0..60.00);
-                    vec2(force * direction.x, force * direction.y)
-                }
-                _ => {
-                    let direction =
-                        Quat::from_rotation_z((rng.gen_range(0..360) as f32).to_radians())
-                            * -Vec3::Y; //TODO: find out why this works
-                    let force = rng.gen_range(30.0..70.00);
-                    vec2(force * direction.x, force * direction.y)
-                }
-            };
 
             let asteroid = commands
                 .spawn_bundle(AsteroidBundle {
@@ -189,11 +329,12 @@ pub fn asteroid_generation_system(
                     )),
                     bound: Bounding::from(bounding),
                     wrap: BoundaryWrap,
-                    vel: Velocity::from(vel),
+                    vel: velocity(&vec2(center.x, center.y), radius, &mut rng),
                     vel_limit: SpeedLimit::from(200.0),
                     ang_vel: AngularVelocity::from(rng.gen_range(0.1..1.0)),
                     marker: Asteroid,
-                    health: Health(health),
+                    points: Points(points.clone()),
+                    health: health(radius),
                 })
                 .id();
 

@@ -1,19 +1,18 @@
 use std::{f32::consts::PI, time::Duration};
 
 use crate::{
-    asteroid::{Damage, Health},
-    particles::BallParticleSpawnEvent,
-    DamageTransferEvent, Flick,
+    asteroid::{AsteroidSpawnEvent, AsteroidSplitEvent, Damage, Health, Points},
+    Flick,
 };
 
 use super::{
-    random::{Random, RandomPlugin},
-    Asteroid, AsteroidSpawnEvent, DestructionEvent, GrainParticleSpawnEvent, PlayerDeathEvent,
-    Ship, ShipState, Velocity, ASTEROID_SIZES,
+    random::Random, Asteroid, DestructionEvent, GrainParticleSpawnEvent, PlayerDeathEvent, Ship,
+    ShipState, Velocity, ASTEROID_SIZES,
 };
 use bevy::ecs::component::Component;
 use bevy::math::vec2;
 use bevy::prelude::*;
+use bevy_prototype_lyon::prelude::Path;
 use derive_more::From;
 use rand::Rng;
 
@@ -53,15 +52,14 @@ pub struct Bounding(pub f32);
 
 // Temporarily Radius will act as Mass for momentum calculation
 pub fn self_collision_system<A: Component>(
-    mut colliders: Query<(Entity, &mut Transform, &Bounding, &mut Velocity, With<A>)>,
-    mut rng: Local<Random>,
+    mut colliders: Query<(&mut Transform, &Bounding, &mut Velocity, With<A>)>,
 ) {
     let mut combinations = colliders.iter_combinations_mut();
-    while let Some([mut a, mut b]) = combinations.fetch_next() {
-        let (_, mut at, ab, mut av, _) = a;
+    while let Some([a, b]) = combinations.fetch_next() {
+        let (at, ab, mut av, _) = a;
         let Vec3 { x: ax, y: ay, z: _ } = at.translation;
         let ar = ab.0; // radius
-        let (_, mut bt, bb, mut bv, _) = b;
+        let (mut bt, bb, mut bv, _) = b;
         let Vec3 { x: bx, y: by, z: _ } = bt.translation;
         let br = bb.0; // radius
 
@@ -88,9 +86,9 @@ pub fn self_collision_system<A: Component>(
 
 pub fn damage_transfer_system<Victim: Component>(
     mut ev_grain: EventWriter<GrainParticleSpawnEvent>,
-    mut ev_ball_particles: EventWriter<BallParticleSpawnEvent>,
+    // mut ev_ball_particles: EventWriter<BallParticleSpawnEvent>,
     mut ev_destruction: EventWriter<DestructionEvent>,
-    mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
+    mut ev_asteroid_split: EventWriter<AsteroidSpawnEvent>,
     mut victims: Query<(
         Entity,
         &Velocity,
@@ -98,13 +96,14 @@ pub fn damage_transfer_system<Victim: Component>(
         &Bounding,
         &mut Health,
         Option<&Asteroid>,
+        Option<&Points>,
         With<Victim>,
     )>,
     mut dealers: Query<(Entity, &Velocity, &Transform, &Bounding, &Damage)>,
     mut rng: Local<Random>,
     mut commands: Commands,
 ) {
-    for (victim, vv, vt, vb, mut health, asteroid, _) in victims.iter_mut() {
+    for (victim, vv, vt, vb, mut health, asteroid, points, _) in victims.iter_mut() {
         let Vec3 { x: x1, y: y1, z: _ } = vt.translation;
         for (dealer, dv, dt, db, damage) in dealers.iter_mut() {
             let Vec3 { x: x2, y: y2, z: _ } = dt.translation;
@@ -113,6 +112,7 @@ pub fn damage_transfer_system<Victim: Component>(
                 if new_health < 0.0 {
                     ev_destruction.send(DestructionEvent { entity: victim });
                     if let Some(Asteroid) = asteroid {
+                        // let points = points.unwrap();
                         match vb.0 as usize {
                             60..=80 => {
                                 // ev_ball_particles.send(BallParticleSpawnEvent {
@@ -123,7 +123,8 @@ pub fn damage_transfer_system<Victim: Component>(
                                 //     delay: 30,
                                 //     dir_vel: dv.0,
                                 // });
-                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
+                                ev_asteroid_split.send(AsteroidSpawnEvent {
+                                    // parent_points: points.0.clone(),
                                     amount: 2,
                                     pos: vec2(vt.translation.x, vt.translation.y),
                                     radius: rng.gen_range(ASTEROID_SIZES.1),
@@ -138,7 +139,8 @@ pub fn damage_transfer_system<Victim: Component>(
                                 //     delay: 30,
                                 //     dir_vel: dv.0,
                                 // });
-                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
+                                ev_asteroid_split.send(AsteroidSpawnEvent {
+                                    // parent_points: points.0.clone(),
                                     amount: 3,
                                     pos: vec2(vt.translation.x, vt.translation.y),
                                     radius: rng.gen_range(ASTEROID_SIZES.2),
@@ -186,16 +188,13 @@ pub fn kill_collision_system<A: Component, B: Component>(
     mut ev_explode: EventWriter<GrainParticleSpawnEvent>,
     mut ev_player_death: EventWriter<PlayerDeathEvent>,
     colliders: Query<(Entity, &Transform, &Bounding, &Velocity, With<A>)>,
-    mut victims: Query<(Entity, &Transform, &Bounding, With<B>, Option<&mut Ship>)>,
+    mut victims: Query<(&Transform, &Bounding, With<B>, Option<&mut Ship>)>,
 ) {
     for (_collider, at, ab, avel, _) in colliders.iter() {
-        let Vec3 { x: x1, y: y1, z: _ } = at.translation;
-        let r1 = ab.0;
-        for (victim, bt, bb, _, ship) in victims.iter_mut() {
-            let Vec3 { x: x2, y: y2, z: _ } = bt.translation;
+        for (bt, bb, _, ship) in victims.iter_mut() {
             let r2 = bb.0;
             if circles_touching(&at, ab, &bt, bb) {
-                if let Some(mut ship) = ship {
+                if let Some(ship) = ship {
                     if matches!(ship.state, ShipState::Alive) {
                         ev_explode.send(GrainParticleSpawnEvent {
                             pos: bt.translation,

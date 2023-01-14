@@ -56,7 +56,6 @@ enum System {
     Boundary,
     Particles,
     Despawning,
-    Spawning,
 }
 
 #[derive(Default)]
@@ -105,11 +104,11 @@ fn main() {
     .insert_resource(Msaa { samples: 4 })
     .insert_resource(Debug(cfg.debug))
     .add_event::<AsteroidSpawnEvent>()
+    .add_event::<AsteroidSplitEvent>()
     .add_event::<DestructionEvent>()
     .add_event::<PlayerDeathEvent>()
     .add_event::<GrainParticleSpawnEvent>()
     .add_event::<BallParticleSpawnEvent>()
-    .add_event::<DamageTransferEvent>()
     .add_plugins(DefaultPlugins)
     .add_plugin(ShapePlugin)
     .add_plugin(RandomPlugin)
@@ -156,6 +155,7 @@ fn main() {
     .add_system(destruction_system.after(System::Collision))
     .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
     .add_system(asteroid_generation_system)
+    .add_system(asteroid_split_system)
     .add_system(darken_system.before(System::Despawning))
     .add_system_set(
         SystemSet::new()
@@ -217,7 +217,7 @@ fn player_state_system(
                 }
             }
             ShipState::Alive => {
-                for _PlayerDeathEvent in ev_death.iter() {
+                for _player_death_event in ev_death.iter() {
                     commands
                         .entity(entity)
                         .remove::<Bounding>()
@@ -367,11 +367,6 @@ fn delayed_spawn_system(
 
 pub struct DestructionEvent {
     entity: Entity,
-}
-
-pub struct DamageTransferEvent {
-    victim: Entity,
-    damage: f32,
 }
 
 pub struct PlayerDeathEvent {}
