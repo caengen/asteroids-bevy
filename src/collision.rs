@@ -88,7 +88,7 @@ pub fn damage_transfer_system<Victim: Component>(
     mut ev_grain: EventWriter<GrainParticleSpawnEvent>,
     // mut ev_ball_particles: EventWriter<BallParticleSpawnEvent>,
     mut ev_destruction: EventWriter<DestructionEvent>,
-    mut ev_asteroid_split: EventWriter<AsteroidSpawnEvent>,
+    mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
     mut victims: Query<(
         Entity,
         &Velocity,
@@ -123,9 +123,9 @@ pub fn damage_transfer_system<Victim: Component>(
                                 //     delay: 30,
                                 //     dir_vel: dv.0,
                                 // });
-                                ev_asteroid_split.send(AsteroidSpawnEvent {
+                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
                                     // parent_points: points.0.clone(),
-                                    amount: 2,
+                                    amount: 3,
                                     pos: vec2(vt.translation.x, vt.translation.y),
                                     radius: rng.gen_range(ASTEROID_SIZES.1),
                                 });
@@ -139,7 +139,7 @@ pub fn damage_transfer_system<Victim: Component>(
                                 //     delay: 30,
                                 //     dir_vel: dv.0,
                                 // });
-                                ev_asteroid_split.send(AsteroidSpawnEvent {
+                                ev_asteroid_spawn.send(AsteroidSpawnEvent {
                                     // parent_points: points.0.clone(),
                                     amount: 3,
                                     pos: vec2(vt.translation.x, vt.translation.y),

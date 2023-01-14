@@ -276,17 +276,13 @@ pub fn asteroid_generation_system(
         radius,
     } in ev_asteroid_spawn.iter()
     {
-        let mut points = Vec::new();
         for i in 0..*amount {
-            let pos = if *amount > 0 {
-                let angle = ((360 / *amount * i) as f32).to_radians();
-                vec2(
-                    pos.x + *radius * 1.25 * angle.sin(),
-                    pos.y + *radius * 1.25 * angle.cos(),
-                )
-            } else {
-                *pos
-            };
+            let mut points = Vec::new();
+            let angle = ((360 / *amount * i) as f32).to_radians();
+            let pos = vec2(
+                pos.x + *radius * 1.25 * angle.sin(),
+                pos.y + *radius * 1.25 * angle.cos(),
+            );
 
             let edges = rng.gen_range(9..15);
 
@@ -304,7 +300,6 @@ pub fn asteroid_generation_system(
             }
             let p_len = points.len();
             let average = points
-                .clone()
                 .iter()
                 .map(|p| ((p.x).powi(2) + (p.y).powi(2)).sqrt())
                 .sum::<f32>()
@@ -333,7 +328,7 @@ pub fn asteroid_generation_system(
                     vel_limit: SpeedLimit::from(200.0),
                     ang_vel: AngularVelocity::from(rng.gen_range(0.1..1.0)),
                     marker: Asteroid,
-                    points: Points(points.clone()),
+                    points: Points(points),
                     health: health(radius),
                 })
                 .id();
