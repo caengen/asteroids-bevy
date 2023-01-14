@@ -18,7 +18,6 @@ use rand::Rng;
 use std::{ops::Range, time::Duration};
 
 const GRAIN_RADIUS: f32 = 0.3;
-const BALL_RADIUS: f32 = 6.0;
 const PARTICLE_DAMPING: f32 = 0.992;
 
 pub struct GrainParticleSpawnEvent {
