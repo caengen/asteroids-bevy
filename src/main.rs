@@ -119,6 +119,7 @@ fn main() {
             .label(System::Input)
             .with_system(steering_control_system)
             .with_system(drive_control_system)
+            .with_system(side_thruster_control_system)
             .with_system(cannon_control_system),
     )
     .add_system_set(
@@ -126,6 +127,7 @@ fn main() {
             .label(System::Movement)
             .with_system(movement_system)
             .with_system(drive_system)
+            .with_system(side_thruster_system)
             .with_system(damping_system)
             .after(System::Input),
     )
@@ -192,6 +194,7 @@ fn player_state_system(
                         .insert(Bounding::from(PLAYER_SIZE / 2.0))
                         .insert(SteeringControl::from(Angle::degrees(180.0)))
                         .insert(Drive::new(3.0, 1.5))
+                        .insert(SideThrusters::new(1.0))
                         .insert(Cannon::from(400.0))
                         .insert(Velocity::default())
                         .insert(AngularVelocity::default());
@@ -223,6 +226,7 @@ fn player_state_system(
                         .remove::<Bounding>()
                         .remove::<SteeringControl>()
                         .remove::<Drive>()
+                        .remove::<SideThrusters>()
                         .remove::<Cannon>()
                         .remove::<Velocity>()
                         .remove::<AngularVelocity>();

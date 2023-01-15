@@ -14,11 +14,19 @@ pub struct Damping(pub f32);
 
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 pub struct SpeedLimit(pub f32);
+
 #[derive(Debug)]
 pub enum DriveMode {
     Off,
     Propulsion,
     Reverse,
+}
+
+#[derive(Debug)]
+pub enum ThrustersMode {
+    Off,
+    Left,
+    Right,
 }
 
 #[derive(Debug, Component)]
@@ -33,6 +41,20 @@ impl Drive {
             mode: DriveMode::Off,
             propulsion_force,
             reverse_force,
+        }
+    }
+}
+
+#[derive(Debug, Component)]
+pub struct SideThrusters {
+    pub mode: ThrustersMode,
+    pub force: f32,
+}
+impl SideThrusters {
+    pub fn new(force: f32) -> Self {
+        SideThrusters {
+            mode: ThrustersMode::Off,
+            force,
         }
     }
 }
@@ -73,6 +95,21 @@ pub fn drive_control_system(mut query: Query<&mut Drive>, keyboard: Res<Input<Ke
     }
 }
 
+pub fn side_thruster_control_system(
+    mut query: Query<&mut SideThrusters>,
+    keyboard: Res<Input<KeyCode>>,
+) {
+    for mut thrusters in query.iter_mut() {
+        thrusters.mode = if keyboard.pressed(KeyCode::Q) {
+            ThrustersMode::Left
+        } else if keyboard.pressed(KeyCode::E) {
+            ThrustersMode::Right
+        } else {
+            ThrustersMode::Off
+        }
+    }
+}
+
 pub fn drive_system(mut query: Query<(&mut Velocity, &Transform, &Drive)>) {
     for (mut velocity, transform, drive) in query.iter_mut() {
         match drive.mode {
@@ -88,6 +125,28 @@ pub fn drive_system(mut query: Query<(&mut Velocity, &Transform, &Drive)>) {
                 let direction = transform.rotation * -Vec3::Y;
                 velocity.x += -(direction.x * drive.reverse_force);
                 velocity.y += -(direction.y * drive.reverse_force);
+            }
+        }
+    }
+}
+
+pub fn side_thruster_system(mut query: Query<(&mut Velocity, &Transform, &SideThrusters)>) {
+    for (mut velocity, transform, thruster) in query.iter_mut() {
+        match thruster.mode {
+            ThrustersMode::Off => return,
+            ThrustersMode::Left => {
+                let angle = 90.0_f32.to_radians();
+                let rot = transform.rotation;
+                let direction = rot.mul_quat(Quat::from_rotation_z(angle)) * -Vec3::Y;
+                velocity.x += direction.x * thruster.force;
+                velocity.y += direction.y * thruster.force;
+            }
+            ThrustersMode::Right => {
+                let angle = 90.0_f32.to_radians();
+                let rot = transform.rotation;
+                let direction = rot.mul_quat(Quat::from_rotation_z(angle)) * -Vec3::Y;
+                velocity.x += -(direction.x * thruster.force);
+                velocity.y += -(direction.y * thruster.force);
             }
         }
     }
