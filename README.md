@@ -12,9 +12,12 @@ To debug run `cargo run -- -d`.
 
 ### Keybindings
 
-| Key   | Action            |
-| ----- | ----------------- |
-| Left  | Rotate left       |
-| Right | Rotate right      |
-| Up    | Activate thruster |
-| Space | Fire cannon       |
+| Key   | Action           |
+| ----- | ---------------- |
+| Left  | Rotate left      |
+| Right | Rotate right     |
+| Up    | Propulsion       |
+| Down  | Reverse thruster |
+| Space | Fire cannon      |
+| Q     | Strafe left      |
+| E     | Strafe right     |
