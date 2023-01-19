@@ -15,7 +15,7 @@ pub struct Damping(pub f32);
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 pub struct SpeedLimit(pub f32);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum DriveMode {
     Off,
     Propulsion,

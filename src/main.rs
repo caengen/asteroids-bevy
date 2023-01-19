@@ -159,6 +159,7 @@ fn main() {
     .add_system(asteroid_generation_system)
     .add_system(asteroid_split_system)
     .add_system(darken_system.before(System::Despawning))
+    .add_system(shrink_system.before(System::Despawning))
     .add_system_set(
         SystemSet::new()
             .label(System::Despawning)
@@ -167,6 +168,7 @@ fn main() {
     )
     .add_system(delayed_spawn_system.before(System::Despawning))
     .add_system(player_state_system)
+    .add_system(propulsion_exhaust_system)
     .add_system(flick_system);
 
     if cfg.debug {
@@ -448,6 +450,9 @@ pub struct TimedRemoval(pub Timer);
 
 #[derive(Debug, Component)]
 pub struct Darken(pub Timer);
+#[derive(Debug, Component)]
+pub struct Shrink(pub Timer);
+
 #[derive(Debug, Component)]
 pub struct DelayedVisibility(pub Timer);
 

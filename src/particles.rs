@@ -1,4 +1,7 @@
-use crate::{DelayedVisibility, DARK};
+use crate::{
+    movement::{Drive, DriveMode},
+    DelayedVisibility, Shrink, DARK, PLAYER_DAMPING, PLAYER_SIZE,
+};
 
 use super::{
     random::Random, Color, Damping, Darken, TimedRemoval, Velocity, LIGHT, POLY_LINE_WIDTH,
@@ -6,7 +9,8 @@ use super::{
 use bevy::{
     math::{vec2, vec3},
     prelude::{
-        Commands, EventReader, Local, Query, Res, Time, Transform, Vec2, Vec3, Visibility, Without,
+        Commands, Component, Entity, EventReader, Local, Query, Res, Time, Transform, Vec2, Vec3,
+        Visibility, Without,
     },
     time::Timer,
 };
@@ -19,6 +23,18 @@ use std::{ops::Range, time::Duration};
 
 const GRAIN_RADIUS: f32 = 0.3;
 const PARTICLE_DAMPING: f32 = 0.992;
+
+const EXHAUST_SIZE: f32 = 10.0;
+
+// in seconds
+const EXHAUST_TIMEOUT: f32 = 0.15;
+const EXHAUST_SHRINK_TIMEOUT: f32 = 0.05;
+const EXHAUST_LIVE_TIME: f32 = 2.0;
+
+const EXHAUST_VEL_MUT: f32 = -0.3;
+const EXHAUST_POS_X_RANGE: Range<f32> = -(PLAYER_SIZE / 2.0)..(PLAYER_SIZE / 2.0);
+const EXHAUST_POS_Y_RANGE: Range<f32> = (PLAYER_SIZE / 1.5)..(PLAYER_SIZE);
+const EXHAUST_SIZE_RANGE: Range<f32> = (EXHAUST_SIZE / 2.0)..EXHAUST_SIZE;
 
 pub struct GrainParticleSpawnEvent {
     pub pos: Vec3,
@@ -62,6 +78,23 @@ pub fn darken_system(
     }
 }
 
+/**
+ * Shrink the component by subtracting the scale vector each time the timer finishes
+ */
+pub fn shrink_system(mut shrinking: Query<(&mut Transform, &mut Shrink)>, time: Res<Time>) {
+    for (mut transform, mut shrink) in shrinking.iter_mut() {
+        shrink.0.tick(time.delta());
+
+        if shrink.0.just_finished() && transform.scale.x > 0.0 && transform.scale.y > 0.0 {
+            transform.scale *= 1.0 - (0.9 * time.delta_seconds());
+        }
+    }
+}
+
+/**
+ * Spawns an array of growing balls that the darken with time.
+ * Useful particle effect for explosions... maybe.
+ */
 pub fn ball_spawn_system(
     mut commands: Commands,
     mut rng: Local<Random>,
@@ -129,6 +162,9 @@ pub fn ball_spawn_system(
     }
 }
 
+/**
+ * Particle effect used for explosions or impacts. Very versatile.
+ */
 pub fn grain_spawn_system(
     mut commands: Commands,
     mut rng: Local<Random>,
@@ -178,6 +214,77 @@ pub fn grain_spawn_system(
                 )))
                 .insert(Velocity::from(vel))
                 .insert(Damping::from(PARTICLE_DAMPING));
+        }
+    }
+}
+
+#[derive(Component)]
+pub struct ExhaustTimer(pub Timer);
+
+/**
+ * Particle effect that creates a cross particle that shrinks and fades
+ */
+pub fn propulsion_exhaust_system(
+    mut drive_engines: Query<(
+        Entity,
+        &Velocity,
+        &Transform,
+        &Drive,
+        Option<&mut ExhaustTimer>,
+    )>,
+    mut commands: Commands,
+    mut rng: Local<Random>,
+    time: Res<Time>,
+) {
+    for (entity, velocity, transform, drive, timer) in drive_engines.iter_mut() {
+        if drive.mode == DriveMode::Off {
+            if let Some(_) = timer {
+                commands.entity(entity).remove::<ExhaustTimer>();
+            }
+
+            return;
+        }
+
+        if let Some(mut timer) = timer {
+            timer.0.tick(time.delta());
+            if (timer.0.just_finished()) {
+                let rot = transform.rotation;
+                let pos = vec3(
+                    rng.gen_range(EXHAUST_POS_X_RANGE),
+                    rng.gen_range(EXHAUST_POS_Y_RANGE),
+                    1.0,
+                );
+
+                let size = rng.gen_range(EXHAUST_SIZE_RANGE);
+                let horisontal = shapes::Line(vec2(-size / 2.0, 0.0), vec2(size / 2.0, 0.0));
+                let vertical = shapes::Line(vec2(0.0, -size / 2.0), vec2(0.0, size / 2.0));
+
+                let exhaust = GeometryBuilder::default()
+                    .add(&horisontal)
+                    .add(&vertical)
+                    .build(
+                        DrawMode::Outlined {
+                            outline_mode: StrokeMode::new(LIGHT, POLY_LINE_WIDTH),
+                            fill_mode: FillMode::color(LIGHT),
+                        },
+                        Transform {
+                            translation: transform.translation + (rot * pos),
+                            ..Default::default()
+                        },
+                    );
+
+                commands
+                    .spawn()
+                    .insert_bundle(exhaust)
+                    .insert(Velocity(velocity.0 * EXHAUST_VEL_MUT))
+                    .insert(TimedRemoval(Timer::from_seconds(EXHAUST_LIVE_TIME, false)))
+                    .insert(Damping::from(PLAYER_DAMPING))
+                    .insert(Shrink(Timer::from_seconds(EXHAUST_SHRINK_TIMEOUT, true)));
+            }
+        } else {
+            commands
+                .entity(entity)
+                .insert(ExhaustTimer(Timer::from_seconds(EXHAUST_TIMEOUT, true)));
         }
     }
 }
