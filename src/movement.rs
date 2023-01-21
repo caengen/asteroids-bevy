@@ -85,9 +85,9 @@ pub fn damping_system(mut query: Query<(&mut Velocity, &Damping)>) {
 
 pub fn drive_control_system(mut query: Query<&mut Drive>, keyboard: Res<Input<KeyCode>>) {
     for mut drive in query.iter_mut() {
-        drive.mode = if keyboard.pressed(KeyCode::Up) {
+        drive.mode = if keyboard.any_pressed([KeyCode::Up, KeyCode::W]) {
             DriveMode::Propulsion
-        } else if keyboard.pressed(KeyCode::Down) {
+        } else if keyboard.any_pressed([KeyCode::Down, KeyCode::S]) {
             DriveMode::Reverse
         } else {
             DriveMode::Off
@@ -157,9 +157,9 @@ pub fn steering_control_system(
     keyboard: Res<Input<KeyCode>>,
 ) {
     for (mut angular_velocity, steering_control) in query.iter_mut() {
-        if keyboard.pressed(KeyCode::Left) {
+        if keyboard.any_pressed([KeyCode::Left, KeyCode::A]) {
             *angular_velocity = AngularVelocity::from(steering_control.0.get());
-        } else if keyboard.pressed(KeyCode::Right) {
+        } else if keyboard.any_pressed([KeyCode::Right, KeyCode::D]) {
             *angular_velocity = AngularVelocity::from(-steering_control.0.get());
         } else {
             *angular_velocity = AngularVelocity::from(0.0);

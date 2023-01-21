@@ -155,8 +155,8 @@ fn main() {
             .after(System::Collision),
     )
     .add_system(destruction_system.after(System::Collision))
-    // .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
-    // .add_system(asteroid_generation_system)
+    .add_system(asteroid_spawn_system.with_run_criteria(FixedTimestep::step(0.5)))
+    .add_system(asteroid_generation_system)
     .add_system(asteroid_split_system)
     .add_system(darken_system.before(System::Despawning))
     .add_system(shrink_system.before(System::Despawning))
