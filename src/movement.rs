@@ -22,7 +22,7 @@ pub enum DriveMode {
     Reverse,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ThrustersMode {
     Off,
     Left,
@@ -133,7 +133,7 @@ pub fn drive_system(mut query: Query<(&mut Velocity, &Transform, &Drive)>) {
 pub fn side_thruster_system(mut query: Query<(&mut Velocity, &Transform, &SideThrusters)>) {
     for (mut velocity, transform, thruster) in query.iter_mut() {
         match thruster.mode {
-            ThrustersMode::Off => return,
+            ThrustersMode::Off => {}
             ThrustersMode::Left => {
                 let angle = 90.0_f32.to_radians();
                 let rot = transform.rotation;

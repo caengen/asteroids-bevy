@@ -40,6 +40,7 @@ pub struct AsteroidSplitEvent {
 
 #[derive(Debug, Component, Clone, Deref)]
 pub struct Points(pub Vec<Vec2>);
+
 #[derive(Bundle)]
 pub struct AsteroidBundle {
     pub bound: Bounding,
