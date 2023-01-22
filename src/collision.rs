@@ -9,9 +9,9 @@ use super::{
     random::Random, Asteroid, DestructionEvent, GrainParticleSpawnEvent, PlayerDeathEvent, Ship,
     ShipState, Velocity, ASTEROID_SIZES,
 };
-use bevy::ecs::component::Component;
 use bevy::math::vec2;
 use bevy::prelude::*;
+use bevy::{ecs::component::Component, math::vec3};
 use bevy_prototype_lyon::prelude::Path;
 use derive_more::From;
 use rand::Rng;
@@ -47,12 +47,83 @@ fn vel_after_collision(v1: f32, m1: f32, a1: f32, v2: f32, m2: f32, a2: f32, c: 
         y_vel_comp_after_collision(v1, m1, a1, v2, m2, a2, c),
     )
 }
+
+fn rotate_point(fp: Vec2, pt: Vec2, a: f32) -> Vec2 {
+    let x = pt.x - fp.x;
+    let y = pt.y - fp.y;
+    let x_rot = x * a.cos() + y * a.sin();
+    let y_rot = y * a.cos() - x * a.sin();
+
+    vec2(fp.x + x_rot, fp.y + y_rot)
+}
+
+// source: https://github.com/williamfiset/Algorithms/blob/master/src/main/java/com/williamfiset/algorithms/geometry/CircleCircleIntersectionPoints.js
+fn circle_impact_position(a: &Transform, b: &Transform, ar: f32, br: f32) -> Option<Vec3> {
+    let mut r: f32 = 0.0;
+    let mut R: f32 = 0.0;
+    let mut cx: f32 = 0.0;
+    let mut Cx: f32 = 0.0;
+    let mut cy: f32 = 0.0;
+    let mut Cy: f32 = 0.0;
+    if ar < br {
+        r = ar;
+        R = br;
+        cx = a.translation.x;
+        cy = a.translation.y;
+        Cx = b.translation.x;
+        Cy = b.translation.y;
+    } else {
+        r = ar;
+        R = br;
+        Cx = b.translation.x;
+        Cy = b.translation.y;
+        cx = a.translation.x;
+        cy = a.translation.y;
+    }
+
+    let d = distance_between(&a.translation, &b.translation);
+
+    if d < f32::EPSILON && (R - r).abs() < f32::EPSILON {
+        return None;
+    }
+    // No intersection (circles centered at the
+    // same place with different size)
+    else if d < f32::EPSILON {
+        return None;
+    }
+
+    let dx = cx - Cx;
+    let dy = cy - Cy;
+    let x = (dx / d) * R + Cx;
+    let y = (dy / d) * R + Cy;
+    let P = vec2(x, y);
+
+    if (ar - br).abs() - d < f32::EPSILON || (ar - br + d).abs() < f32::EPSILON {
+        return Some(vec3(P.x, P.y, 1.0));
+    }
+
+    // No intersection. Either the small circle contained within
+    // big circle or circles are simply disjoint.
+    if (d + r) < R || (R + r < d) {
+        return None;
+    };
+
+    let C = vec2(Cx, Cy);
+    let angle = ((r * r - d * d - R * R) / (-2.0 * d * R)).acos();
+    let pt1 = rotate_point(C, P, angle.abs());
+    let pt2 = rotate_point(C, P, -angle);
+    let avg = vec3((pt1.x + pt2.x) / 2.0, (pt1.y + pt2.y) / 2.0, 1.0);
+
+    return Some(avg);
+}
+
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 pub struct Bounding(pub f32);
 
 // Temporarily Radius will act as Mass for momentum calculation
 pub fn self_collision_system<A: Component>(
     mut colliders: Query<(&mut Transform, &Bounding, &mut Velocity, With<A>)>,
+    mut ev_grain: EventWriter<GrainParticleSpawnEvent>,
 ) {
     let mut combinations = colliders.iter_combinations_mut();
     while let Some([a, b]) = combinations.fetch_next() {
@@ -65,16 +136,28 @@ pub fn self_collision_system<A: Component>(
 
         if circles_touching(&at, ab, &bt, bb) {
             let contact_angle = f32::atan2(by - ay, bx - ax);
-
             let distance_to_move = distance_to_move(&at.translation, ar, &bt.translation, br);
+
+            if let Some(impact_pos) = circle_impact_position(&at, &bt, ab.0, bb.0) {
+                ev_grain.send(GrainParticleSpawnEvent {
+                    pos: impact_pos,
+                    spawn_radius: 1.0,
+                    particles: 1..5,
+                    impact_vel: vec2(0.0, 0.0),
+                });
+            }
+
             // move the second circle
             bt.translation.x += f32::cos(contact_angle) * distance_to_move;
             bt.translation.y += f32::sin(contact_angle) * distance_to_move;
 
+            // velocities
             let v1 = av.length();
             let v2 = bv.length();
+            // masses
             let m1 = PI * ar.powi(2);
             let m2 = PI * br.powi(2);
+            // angles
             let a1 = av.angle_between(vec2(ax, ay));
             let a2 = bv.angle_between(vec2(bx, by));
 
@@ -129,6 +212,12 @@ pub fn damage_transfer_system<Victim: Component>(
                                     pos: vec2(vt.translation.x, vt.translation.y),
                                     radius: rng.gen_range(ASTEROID_SIZES.1),
                                 });
+                                ev_grain.send(GrainParticleSpawnEvent {
+                                    pos: vt.translation,
+                                    spawn_radius: vb.0 / 1.5,
+                                    particles: 100..200,
+                                    impact_vel: vec2(0.0, 0.0),
+                                });
                             }
                             30..=50 => {
                                 // ev_ball_particles.send(BallParticleSpawnEvent {
@@ -144,6 +233,12 @@ pub fn damage_transfer_system<Victim: Component>(
                                     amount: 3,
                                     pos: vec2(vt.translation.x, vt.translation.y),
                                     radius: rng.gen_range(ASTEROID_SIZES.2),
+                                });
+                                ev_grain.send(GrainParticleSpawnEvent {
+                                    pos: vt.translation,
+                                    spawn_radius: vb.0 / 1.5,
+                                    particles: 100..200,
+                                    impact_vel: vec2(0.0, 0.0),
                                 });
                             }
                             _ => {
