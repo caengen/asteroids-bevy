@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, time::Duration};
+use std::{f32::consts::PI, ops::Range, time::Duration};
 
 use crate::{
     asteroid::{AsteroidSpawnEvent, AsteroidSplitEvent, Damage, Health, Points},
@@ -120,6 +120,9 @@ fn circle_impact_position(a: &Transform, b: &Transform, ar: f32, br: f32) -> Opt
 #[derive(Debug, Component, Default, Deref, DerefMut, From)]
 pub struct Bounding(pub f32);
 
+const IMPACT_VEL_PARTICLE_TRIGGER: f32 = 25.0;
+const IMPACT_SPAWN_RADIUS: f32 = 1.0;
+const IMPCAT_PARTICLE_RANGE: Range<i32> = 1..5;
 // Temporarily Radius will act as Mass for momentum calculation
 pub fn self_collision_system<A: Component>(
     mut colliders: Query<(&mut Transform, &Bounding, &mut Velocity, With<A>)>,
@@ -138,22 +141,25 @@ pub fn self_collision_system<A: Component>(
             let contact_angle = f32::atan2(by - ay, bx - ax);
             let distance_to_move = distance_to_move(&at.translation, ar, &bt.translation, br);
 
-            if let Some(impact_pos) = circle_impact_position(&at, &bt, ab.0, bb.0) {
-                ev_grain.send(GrainParticleSpawnEvent {
-                    pos: impact_pos,
-                    spawn_radius: 1.0,
-                    particles: 1..5,
-                    impact_vel: vec2(0.0, 0.0),
-                });
+            // velocities
+            let v1 = av.length();
+            let v2 = bv.length();
+
+            if v1 > IMPACT_VEL_PARTICLE_TRIGGER || v2 > IMPACT_VEL_PARTICLE_TRIGGER {
+                if let Some(impact_pos) = circle_impact_position(&at, &bt, ab.0, bb.0) {
+                    ev_grain.send(GrainParticleSpawnEvent {
+                        pos: impact_pos,
+                        spawn_radius: IMPACT_SPAWN_RADIUS,
+                        particles: IMPCAT_PARTICLE_RANGE,
+                        impact_vel: vec2(0.0, 0.0),
+                    });
+                }
             }
 
             // move the second circle
             bt.translation.x += f32::cos(contact_angle) * distance_to_move;
             bt.translation.y += f32::sin(contact_angle) * distance_to_move;
 
-            // velocities
-            let v1 = av.length();
-            let v2 = bv.length();
             // masses
             let m1 = PI * ar.powi(2);
             let m2 = PI * br.powi(2);
