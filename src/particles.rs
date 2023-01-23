@@ -65,18 +65,14 @@ pub fn darken_system(
     for (mut draw_mode, mut darken, _) in query.iter_mut() {
         darken.0.tick(time.delta());
 
-        if !darken.0.finished() {
+        if darken.0.just_finished() {
             if let DrawMode::Outlined {
                 ref mut fill_mode,
                 ref mut outline_mode,
             } = *draw_mode
             {
-                let pc = darken.0.percent_left();
-                let new_cor = Color::rgb(
-                    (LIGHT.r() * pc).clamp(DARK.r(), LIGHT.r()),
-                    (LIGHT.g() * pc).clamp(DARK.g(), LIGHT.g()),
-                    (LIGHT.b() * pc).clamp(DARK.b(), LIGHT.b()),
-                );
+                let pc = 0.70;
+                let new_cor = Color::rgb(LIGHT.r() * pc, LIGHT.g() * pc, LIGHT.b() * pc);
                 fill_mode.color = new_cor;
                 outline_mode.color = new_cor;
             }
@@ -218,6 +214,7 @@ pub fn grain_spawn_system(
                     Duration::from_millis(rng.gen_range(300..1500)),
                     false,
                 )))
+                .insert(Darken(Timer::new(Duration::from_millis(100), false)))
                 .insert(Velocity::from(vel))
                 .insert(Damping::from(PARTICLE_DAMPING));
         }
