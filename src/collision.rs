@@ -285,6 +285,61 @@ pub fn damage_transfer_system<Victim: Component>(
     }
 }
 
+pub fn elastic_collision_system<A: Component, B: Component>(
+    mut colliders: Query<(&mut Transform, &Bounding, &mut Velocity, With<A>)>,
+    mut victims: Query<(
+        &mut Transform,
+        &Bounding,
+        &mut Velocity,
+        With<B>,
+        Without<A>,
+    )>,
+    mut ev_grain: EventWriter<GrainParticleSpawnEvent>,
+) {
+    for (at, ab, mut av, _) in colliders.iter_mut() {
+        for (mut bt, bb, mut bv, _, _) in victims.iter_mut() {
+            let Vec3 { x: ax, y: ay, z: _ } = at.translation;
+            let ar = ab.0; // radius
+            let Vec3 { x: bx, y: by, z: _ } = bt.translation;
+            let br = bb.0; // radius
+
+            if circles_touching(&at, ab, &bt, bb) {
+                let contact_angle = f32::atan2(by - ay, bx - ax);
+                let distance_to_move = distance_to_move(&at.translation, ar, &bt.translation, br);
+
+                // velocities
+                let v1 = av.length();
+                let v2 = bv.length();
+
+                if v1 > IMPACT_VEL_PARTICLE_TRIGGER || v2 > IMPACT_VEL_PARTICLE_TRIGGER {
+                    if let Some(impact_pos) = circle_impact_position(&at, &bt, ab.0, bb.0) {
+                        ev_grain.send(GrainParticleSpawnEvent {
+                            pos: impact_pos,
+                            spawn_radius: IMPACT_SPAWN_RADIUS,
+                            particles: IMPCAT_PARTICLE_RANGE,
+                            impact_vel: vec2(0.0, 0.0),
+                        });
+                    }
+                }
+
+                // move the second circle
+                bt.translation.x += f32::cos(contact_angle) * distance_to_move;
+                bt.translation.y += f32::sin(contact_angle) * distance_to_move;
+
+                // masses
+                let m1 = PI * ar.powi(2);
+                let m2 = PI * br.powi(2);
+                // angles
+                let a1 = av.angle_between(vec2(ax, ay));
+                let a2 = bv.angle_between(vec2(bx, by));
+
+                av.0 = vel_after_collision(v1, m1, a1, v2, m2, a2, contact_angle) * 0.992;
+                bv.0 = vel_after_collision(v2, m2, a2, v1, m1, a1, contact_angle) * 0.992;
+            }
+        }
+    }
+}
+
 pub fn kill_collision_system<A: Component, B: Component>(
     mut ev_explode: EventWriter<GrainParticleSpawnEvent>,
     mut ev_player_death: EventWriter<PlayerDeathEvent>,

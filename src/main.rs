@@ -143,7 +143,9 @@ fn main() {
         SystemSet::new()
             .label(System::Collision)
             .with_system(damage_transfer_system::<Asteroid>)
-            .with_system(kill_collision_system::<Asteroid, Ship>)
+            // .with_system(kill_collision_system::<Asteroid, Ship>)
+            .with_system(elastic_collision_system::<Asteroid, Bullet>)
+            .with_system(elastic_collision_system::<Ship, Asteroid>)
             .with_system(self_collision_system::<Asteroid>)
             .after(System::Boundary),
     )
