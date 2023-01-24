@@ -2,6 +2,7 @@ use std::{f32::consts::PI, ops::Range, time::Duration};
 
 use crate::{
     asteroid::{AsteroidSpawnEvent, AsteroidSplitEvent, Damage, Health, Points},
+    weapons::Bullet,
     Flick,
 };
 
@@ -173,7 +174,7 @@ pub fn self_collision_system<A: Component>(
     }
 }
 
-pub fn damage_transfer_system<Victim: Component>(
+pub fn damage_transfer_system<Dealer: Component, Victim: Component>(
     mut ev_grain: EventWriter<GrainParticleSpawnEvent>,
     // mut ev_ball_particles: EventWriter<BallParticleSpawnEvent>,
     mut ev_destruction: EventWriter<DestructionEvent>,
@@ -188,13 +189,21 @@ pub fn damage_transfer_system<Victim: Component>(
         Option<&Points>,
         With<Victim>,
     )>,
-    mut dealers: Query<(Entity, &Velocity, &Transform, &Bounding, &Damage)>,
+    mut dealers: Query<(
+        Entity,
+        &Velocity,
+        &Transform,
+        &Bounding,
+        &Damage,
+        Option<&Bullet>,
+        With<Dealer>,
+    )>,
     mut rng: Local<Random>,
     mut commands: Commands,
 ) {
     for (victim, vv, vt, vb, mut health, asteroid, points, _) in victims.iter_mut() {
         let Vec3 { x: x1, y: y1, z: _ } = vt.translation;
-        for (dealer, dv, dt, db, damage) in dealers.iter_mut() {
+        for (dealer, dv, dt, db, damage, bullet, _) in dealers.iter_mut() {
             let Vec3 { x: x2, y: y2, z: _ } = dt.translation;
             if circles_touching(&vt, vb, &dt, db) {
                 let new_health = health.0 - damage.0;
@@ -279,7 +288,9 @@ pub fn damage_transfer_system<Victim: Component>(
                     });
                 }
 
-                commands.entity(dealer).despawn();
+                if let Some(Bullet(_)) = bullet {
+                    commands.entity(dealer).despawn();
+                }
             }
         }
     }

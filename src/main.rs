@@ -142,11 +142,12 @@ fn main() {
     .add_system_set(
         SystemSet::new()
             .label(System::Collision)
-            .with_system(damage_transfer_system::<Asteroid>)
             // .with_system(kill_collision_system::<Asteroid, Ship>)
             .with_system(elastic_collision_system::<Asteroid, Bullet>)
             .with_system(elastic_collision_system::<Ship, Asteroid>)
             .with_system(self_collision_system::<Asteroid>)
+            .with_system(damage_transfer_system::<Bullet, Asteroid>)
+            .with_system(damage_transfer_system::<Ship, Asteroid>)
             .after(System::Boundary),
     )
     .add_system_set(
@@ -202,7 +203,8 @@ fn player_state_system(
                         .insert(SideThrusters::new(2.0))
                         .insert(Cannon::from(400.0))
                         .insert(Velocity::default())
-                        .insert(AngularVelocity::default());
+                        .insert(AngularVelocity::default())
+                        .insert(Damage(30.0));
                     ship.state = ShipState::Alive;
                     visibility.is_visible = true;
                 }
@@ -234,7 +236,8 @@ fn player_state_system(
                         .remove::<SideThrusters>()
                         .remove::<Cannon>()
                         .remove::<Velocity>()
-                        .remove::<AngularVelocity>();
+                        .remove::<AngularVelocity>()
+                        .remove::<Damage>();
                     *ship = Ship {
                         state: ShipState::Dead,
                         timer: Timer::from_seconds(2.0, false),
