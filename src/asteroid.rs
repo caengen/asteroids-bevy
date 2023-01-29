@@ -1,3 +1,5 @@
+use crate::{FRAME_HEIGHT, FRAME_WIDTH, GAME_BORDER_OFFSET};
+
 use super::{
     random::Random, AngularVelocity, BoundaryWrap, Bounding, Debug, ShapeBundle, SpeedLimit,
     Velocity, DARK, LIGHT, POLY_LINE_WIDTH,
@@ -92,17 +94,16 @@ pub fn health(radius: &f32) -> Health {
 }
 
 pub fn asteroid_spawn_system(
-    window: Res<WindowDescriptor>,
     mut rng: Local<Random>,
     mut ev_asteroid_spawn: EventWriter<AsteroidSpawnEvent>,
     asteroids: Query<(&Transform, &Bounding, With<Asteroid>)>,
 ) {
-    if !rng.gen_bool(1.0 / 4.0) {
+    if !rng.gen_bool(1.0 / 6.0) {
         return;
     }
 
-    let h = window.height / 2.0;
-    let w = window.width / 2.0;
+    let h = (FRAME_HEIGHT - GAME_BORDER_OFFSET) / 2.0;
+    let w = (FRAME_WIDTH - GAME_BORDER_OFFSET) / 2.0;
 
     let size = rng.gen_range(0..=10);
     let radius = match size {
@@ -114,13 +115,13 @@ pub fn asteroid_spawn_system(
 
     let side = rng.gen_range(0..=3);
     let pos = match side {
-        0 => vec2(-w, rng.gen_range(-h..h)),
-        1 => vec2(w, rng.gen_range(-h..h)),
-        2 => vec2(rng.gen_range(-w..w), -h),
-        _ => vec2(rng.gen_range(-w..w), h),
+        0 => vec3(-w, rng.gen_range(-h..h), 1.0),
+        1 => vec3(w, rng.gen_range(-h..h), 1.0),
+        2 => vec3(rng.gen_range(-w..w), -h, 1.0),
+        _ => vec3(rng.gen_range(-w..w), h, 1.0),
     };
 
-    let Vec2 { x: x1, y: y1 } = pos;
+    let Vec3 { x: x1, y: y1, z: _ } = pos;
     let r1 = radius;
     for (transform, bounding, _) in asteroids.iter() {
         let Vec3 { x: x2, y: y2, z: _ } = transform.translation;
@@ -133,9 +134,10 @@ pub fn asteroid_spawn_system(
     }
 
     let amount = 1;
+    // må fikse til å kun bruke vec3..
     ev_asteroid_spawn.send(AsteroidSpawnEvent {
         amount,
-        pos,
+        pos: vec2(pos.x, pos.y),
         radius,
     });
 }

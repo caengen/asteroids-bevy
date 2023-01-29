@@ -1,5 +1,6 @@
 use asteroid::*;
 use bevy::ecs::component::Component;
+use bevy::render::texture::ImageSettings;
 use bevy::{
     math::{const_vec2, vec2, vec3},
     prelude::*,
@@ -17,6 +18,7 @@ use bevy_prototype_lyon::{
 use boundary::*;
 use collision::*;
 use derive_more::From;
+use gui::{render_game_ui, setup_game_ui};
 use movement::*;
 use particles::*;
 use rand::Rng;
@@ -28,16 +30,25 @@ use weapons::*;
 mod asteroid;
 mod boundary;
 mod collision;
+mod gui;
 mod movement;
 mod particles;
 mod random;
 mod weapons;
 
-const SCREEN_HEIGHT: f32 = 640.0;
-const SCREEN_WIDTH: f32 = 960.0;
+const SCREEN_HEIGHT: f32 = 512.0;
+const SCREEN_WIDTH: f32 = 1024.0;
+pub const FRAME_WIDTH: f32 = 776.0;
+pub const FRAME_HEIGHT: f32 = 512.0;
+pub const GAME_BORDER_OFFSET: f32 = 8.0;
+pub const FRAME_X_OFFSET: f32 = (SCREEN_WIDTH - FRAME_WIDTH) / 2.0;
+pub const FRAME_START_Y: f32 = -(SCREEN_HEIGHT / 2.0) + 4.0;
+pub const FRAME_END_Y: f32 = SCREEN_HEIGHT / 2.0 - 4.0;
+pub const FRAME_START_X: f32 = -SCREEN_WIDTH / 2.0 + 4.0;
+pub const FRAME_END_X: f32 = (FRAME_WIDTH / 2.0) - FRAME_X_OFFSET;
+
 pub const SCREEN: Vec2 = Vec2::from_array([SCREEN_WIDTH, SCREEN_HEIGHT]);
 // pub const TIME_STEP: f32 = 1.0 / 60.0;
-pub const GAME_WIDTH: f32 = 240.0;
 // pub const PIXELS_PER_METER: f32 = 30.0 / SCALE;
 
 pub const PLAYER_SIZE: f32 = 20.0;
@@ -102,6 +113,7 @@ fn main() {
     })
     .insert_resource(ClearColor(DARK))
     .insert_resource(Msaa { samples: 4 })
+    .insert_resource(ImageSettings::default_nearest()) // prevents blurry sprites
     .insert_resource(Debug(cfg.debug))
     .add_event::<AsteroidSpawnEvent>()
     .add_event::<AsteroidSplitEvent>()
@@ -114,6 +126,7 @@ fn main() {
     .add_plugin(RandomPlugin)
     .add_startup_system(setup_system)
     .add_startup_system(setup_stars)
+    .add_startup_system(setup_game_ui)
     .add_system_set(
         SystemSet::new()
             .label(System::Input)
@@ -204,7 +217,7 @@ fn player_state_system(
                         .insert(Cannon::from(400.0))
                         .insert(Velocity::default())
                         .insert(AngularVelocity::default())
-                        .insert(Damage(30.0));
+                        .insert(Damage(5.0));
                     ship.state = ShipState::Alive;
                     visibility.is_visible = true;
                 }
@@ -256,41 +269,20 @@ struct StarBundle {
     // flick: Flick, blink system?
 }
 
-fn setup_stars(mut commands: Commands, window: Res<WindowDescriptor>, mut rng: Local<Random>) {
-    let h = window.height / 2.0;
-    let w = window.width / 2.0;
-
-    let size = rng.gen_range(0..=10);
-    let radius = match size {
-        0..=3 => rng.gen_range(ASTEROID_SIZES.0),
-        4..=6 => rng.gen_range(ASTEROID_SIZES.1),
-        7..=9 => rng.gen_range(ASTEROID_SIZES.2),
-        _ => rng.gen_range(ASTEROID_SIZES.0),
-    };
-
-    let side = rng.gen_range(0..=3);
-    let pos = match side {
-        0 => vec2(-w, rng.gen_range(-h..h)),
-        1 => vec2(w, rng.gen_range(-h..h)),
-        2 => vec2(rng.gen_range(-w..w), -h),
-        _ => vec2(rng.gen_range(-w..w), h),
-    };
-
-    for i in 0..200 {
-        let pos = vec2(rng.gen_range(-w..w), rng.gen_range(-h..h));
+fn setup_stars(mut commands: Commands, mut rng: Local<Random>) {
+    for _ in 0..150 {
+        let pos = vec2(
+            rng.gen_range(FRAME_START_X..FRAME_END_X),
+            rng.gen_range(FRAME_START_Y..FRAME_END_Y),
+        );
 
         let shape = shapes::Circle {
             radius: rng.gen_range(0.01..CANNON_BULLET_RADIUS),
             ..Default::default()
         };
 
-        // let flick = rng.gen_range(3000..10000);
         let cor = if rng.gen_ratio(1, 2) { LIGHT } else { ESCURO };
         let _star = commands.spawn().insert_bundle(StarBundle {
-            // flick: Flick {
-            //     duration: Timer::new(Duration::from_millis(flick + 100), true),
-            //     switch_timer: Timer::new(Duration::from_millis(flick), true),
-            // },
             shape: (GeometryBuilder::build_as(
                 &shape,
                 DrawMode::Outlined {
@@ -312,7 +304,7 @@ fn setup_system(mut commands: Commands) {
         points: ship_points(),
         closed: false,
     };
-    let mut player = commands
+    let _player = commands
         .spawn()
         .insert_bundle(
             (GeometryBuilder::build_as(
