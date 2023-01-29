@@ -1,3 +1,8 @@
+use crate::{
+    FRAME_END_X, FRAME_END_Y, FRAME_HEIGHT, FRAME_START_X, FRAME_START_Y, FRAME_WIDTH,
+    GAME_BORDER_OFFSET,
+};
+
 use super::Bounding;
 use bevy::prelude::*;
 
@@ -8,11 +13,10 @@ pub struct BoundaryRemoval;
 
 pub fn boundary_removal_system(
     mut commands: Commands,
-    window: Res<WindowDescriptor>,
     mut query: Query<(Entity, &Transform, &Bounding, With<BoundaryRemoval>)>,
 ) {
-    let w = window.width / 2.0;
-    let h = window.height / 2.0;
+    let w = (FRAME_WIDTH - GAME_BORDER_OFFSET) / 2.0;
+    let h = (FRAME_HEIGHT - GAME_BORDER_OFFSET) / 2.0;
     for (entity, transform, bounding, _) in query.iter_mut() {
         let Vec3 { x, y, z: _ } = transform.translation;
         let r = bounding.0;
@@ -22,26 +26,21 @@ pub fn boundary_removal_system(
     }
 }
 
-pub fn boundary_wrapping_system(
-    window: Res<WindowDescriptor>,
-    mut query: Query<(&mut Transform, &Bounding, With<BoundaryWrap>)>,
-) {
+pub fn boundary_wrapping_system(mut query: Query<(&mut Transform, &Bounding, With<BoundaryWrap>)>) {
     for (mut transform, bound, _) in query.iter_mut() {
-        let w = window.width / 2.0;
-        let h = window.height / 2.0;
         let r = bound.0;
         let Vec3 { x, y, z: _ } = transform.translation;
 
-        if x > w + r {
-            transform.translation.x = -w - r;
-        } else if x < -w - r {
-            transform.translation.x = w + r;
+        if x > FRAME_END_X + r {
+            transform.translation.x = FRAME_START_X - r;
+        } else if x < FRAME_START_X - r {
+            transform.translation.x = FRAME_END_X + r;
         }
 
-        if y > h + r {
-            transform.translation.y = -h - r;
-        } else if y < -h - r {
-            transform.translation.y = h + r;
+        if y > FRAME_END_Y + r {
+            transform.translation.y = FRAME_START_Y - r;
+        } else if y < FRAME_START_Y - r {
+            transform.translation.y = FRAME_END_Y + r;
         }
     }
 }
