@@ -1,4 +1,4 @@
-use crate::{FRAME_HEIGHT, FRAME_WIDTH, GAME_BORDER_OFFSET};
+use crate::{GAME_BORDER_OFFSET, GAME_FRAME_HEIGHT, GAME_FRAME_WIDTH};
 
 use super::{
     random::Random, AngularVelocity, BoundaryWrap, Bounding, Debug, ShapeBundle, SpeedLimit,
@@ -102,8 +102,8 @@ pub fn asteroid_spawn_system(
         return;
     }
 
-    let h = (FRAME_HEIGHT - GAME_BORDER_OFFSET) / 2.0;
-    let w = (FRAME_WIDTH - GAME_BORDER_OFFSET) / 2.0;
+    let h = (GAME_FRAME_HEIGHT - GAME_BORDER_OFFSET) / 2.0;
+    let w = (GAME_FRAME_WIDTH - GAME_BORDER_OFFSET) / 2.0;
 
     let size = rng.gen_range(0..=10);
     let radius = match size {

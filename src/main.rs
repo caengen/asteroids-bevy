@@ -18,7 +18,7 @@ use bevy_prototype_lyon::{
 use boundary::*;
 use collision::*;
 use derive_more::From;
-use gui::{render_game_ui, setup_game_ui};
+use gui::setup_game_ui;
 use movement::*;
 use particles::*;
 use rand::Rng;
@@ -38,14 +38,14 @@ mod weapons;
 
 const SCREEN_HEIGHT: f32 = 512.0;
 const SCREEN_WIDTH: f32 = 1024.0;
-pub const FRAME_WIDTH: f32 = 776.0;
-pub const FRAME_HEIGHT: f32 = 512.0;
+pub const GAME_FRAME_WIDTH: f32 = 776.0;
+pub const GAME_FRAME_HEIGHT: f32 = 512.0;
 pub const GAME_BORDER_OFFSET: f32 = 8.0;
-pub const FRAME_X_OFFSET: f32 = (SCREEN_WIDTH - FRAME_WIDTH) / 2.0;
+pub const FRAME_X_OFFSET: f32 = (SCREEN_WIDTH - GAME_FRAME_WIDTH) / 2.0;
 pub const FRAME_START_Y: f32 = -(SCREEN_HEIGHT / 2.0) + 4.0;
 pub const FRAME_END_Y: f32 = SCREEN_HEIGHT / 2.0 - 4.0;
 pub const FRAME_START_X: f32 = -SCREEN_WIDTH / 2.0 + 4.0;
-pub const FRAME_END_X: f32 = (FRAME_WIDTH / 2.0) - FRAME_X_OFFSET;
+pub const FRAME_END_X: f32 = (GAME_FRAME_WIDTH / 2.0) - FRAME_X_OFFSET;
 
 pub const SCREEN: Vec2 = Vec2::from_array([SCREEN_WIDTH, SCREEN_HEIGHT]);
 // pub const TIME_STEP: f32 = 1.0 / 60.0;

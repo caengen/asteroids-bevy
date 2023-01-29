@@ -1,6 +1,6 @@
 use crate::{
-    FRAME_END_X, FRAME_END_Y, FRAME_HEIGHT, FRAME_START_X, FRAME_START_Y, FRAME_WIDTH,
-    GAME_BORDER_OFFSET,
+    FRAME_END_X, FRAME_END_Y, FRAME_START_X, FRAME_START_Y, GAME_BORDER_OFFSET, GAME_FRAME_HEIGHT,
+    GAME_FRAME_WIDTH,
 };
 
 use super::Bounding;
@@ -15,8 +15,8 @@ pub fn boundary_removal_system(
     mut commands: Commands,
     mut query: Query<(Entity, &Transform, &Bounding, With<BoundaryRemoval>)>,
 ) {
-    let w = (FRAME_WIDTH - GAME_BORDER_OFFSET) / 2.0;
-    let h = (FRAME_HEIGHT - GAME_BORDER_OFFSET) / 2.0;
+    let w = (GAME_FRAME_WIDTH - GAME_BORDER_OFFSET) / 2.0;
+    let h = (GAME_FRAME_HEIGHT - GAME_BORDER_OFFSET) / 2.0;
     for (entity, transform, bounding, _) in query.iter_mut() {
         let Vec3 { x, y, z: _ } = transform.translation;
         let r = bounding.0;
