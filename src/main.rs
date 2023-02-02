@@ -44,7 +44,7 @@ pub const GAME_BORDER_OFFSET: f32 = 8.0;
 pub const FRAME_X_OFFSET: f32 = (SCREEN_WIDTH - GAME_FRAME_WIDTH) / 2.0;
 pub const FRAME_START_Y: f32 = -(SCREEN_HEIGHT / 2.0) + 4.0;
 pub const FRAME_END_Y: f32 = SCREEN_HEIGHT / 2.0 - 4.0;
-pub const FRAME_START_X: f32 = -SCREEN_WIDTH / 2.0 + 4.0;
+pub const FRAME_START_X: f32 = -GAME_FRAME_WIDTH / 2.0 - FRAME_X_OFFSET;
 pub const FRAME_END_X: f32 = (GAME_FRAME_WIDTH / 2.0) - FRAME_X_OFFSET;
 
 pub const SCREEN: Vec2 = Vec2::from_array([SCREEN_WIDTH, SCREEN_HEIGHT]);

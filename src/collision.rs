@@ -13,7 +13,6 @@ use super::{
 use bevy::math::vec2;
 use bevy::prelude::*;
 use bevy::{ecs::component::Component, math::vec3};
-use bevy_prototype_lyon::prelude::Path;
 use derive_more::From;
 use rand::Rng;
 
@@ -315,7 +314,7 @@ pub fn elastic_collision_system<A: Component, B: Component>(
             let br = bb.0; // radius
 
             if circles_touching(&at, ab, &bt, bb) {
-                let contact_angle = f32::atan2(by - ay, bx - ax);
+                let contact_angle = f32::atan2(ay - by, ax - bx);
                 let distance_to_move = distance_to_move(&at.translation, ar, &bt.translation, br);
 
                 // velocities

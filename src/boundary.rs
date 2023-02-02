@@ -15,12 +15,14 @@ pub fn boundary_removal_system(
     mut commands: Commands,
     mut query: Query<(Entity, &Transform, &Bounding, With<BoundaryRemoval>)>,
 ) {
-    let w = (GAME_FRAME_WIDTH - GAME_BORDER_OFFSET) / 2.0;
-    let h = (GAME_FRAME_HEIGHT - GAME_BORDER_OFFSET) / 2.0;
     for (entity, transform, bounding, _) in query.iter_mut() {
         let Vec3 { x, y, z: _ } = transform.translation;
         let r = bounding.0;
-        if x < -w - r || x > w + r || y > h + r || y < -h - r {
+        if x > FRAME_END_X + r
+            || x < FRAME_START_X - r
+            || y > FRAME_END_Y + r
+            || y < FRAME_START_Y - r
+        {
             commands.entity(entity).despawn();
         }
     }
